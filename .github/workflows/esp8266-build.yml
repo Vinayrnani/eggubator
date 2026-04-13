@@ -1,0 +1,36 @@
+name: ESP8266 Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env:
+          - nodemcuv2
+          - nodemcuv2_ota
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install platformio
+      - name: Install ESP8266 platform
+        run: |
+          pio platform install espressif8266
+      - name: Build firmware
+        run: |
+          pio run -e ${{ matrix.env }}
+      - name: Upload firmware artifact
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: eggubator-firmware-${{ matrix.env }}
+          path: .pio/build/${{ matrix.env }}/firmware.bin
