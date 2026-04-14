@@ -19,17 +19,31 @@ An IoT-based egg incubator system using NodeMCU ESP8266 WiFi module for remote m
 - Heating element
 - Power supply
 
-## Build & Flash
+## Build & Flash (Arduino CLI)
 
-### Initial USB Flash
 ```bash
-# Edit WiFi credentials in src/main.cpp first
-pio run -t upload -d /dev/ttyUSB0
+# Install Arduino CLI
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
+
+# Add ESP8266 core
+arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+arduino-cli core install esp8266:esp8266
+
+# Install DHT library
+arduino-cli lib install "DHT sensor library"
+
+# Compile
+arduino-cli compile -b esp8266:esp8266:nodemcuv2 eggubator.ino
+```
+
+### Flash via USB
+```bash
+arduino-cli upload -b esp8266:esp8266:nodemcuv2 -p /dev/ttyUSB0 eggubator.ino
 ```
 
 ### OTA Update (after initial flash)
 ```bash
-pio run -e nodemcuv2_ota -t upload --upload-port <ESP8266_IP>
+arduino-cli upload -b esp8266:esp8266:nodemcuv2 -p <ESP8266_IP> --protocol espota eggubator.ino
 ```
 
 ## Web Interface
