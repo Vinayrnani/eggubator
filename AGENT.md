@@ -29,7 +29,7 @@ arduino-cli compile -b esp8266:esp8266:nodemcu eggubator.ino
 ### 4. Copy Files to ArduinoDroid (Android)
 ```bash
 cp build_output/eggubator.ino.bin firmware.bin
-cp eggubator.ino *.h firmware.bin /storage/emulated/0/ArduinoDroid/sketchbook/
+cp eggubator.ino config.h *.h firmware.bin /storage/emulated/0/ArduinoDroid/sketchbook/
 ```
 
 ## Special Commands

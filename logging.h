@@ -10,6 +10,7 @@ struct LogEntry {
   bool heaterState;
   bool atomizerState;
   bool fanState;
+  bool servoState;
 };
 
 #define MAX_LOG_ENTRIES 100
@@ -54,7 +55,7 @@ void saveCheckpoint() {
   EEPROM.commit();
 }
 
-void logData(float temp, float hum, bool heater, bool atomizer, bool fan) {
+void logData(float temp, float hum, bool heater, bool atomizer, bool fan, bool servo) {
   if (logIndex < MAX_LOG_ENTRIES) {
     logBuffer[logIndex].timestamp = millis();
     logBuffer[logIndex].temperature = temp;
@@ -62,6 +63,7 @@ void logData(float temp, float hum, bool heater, bool atomizer, bool fan) {
     logBuffer[logIndex].heaterState = heater;
     logBuffer[logIndex].atomizerState = atomizer;
     logBuffer[logIndex].fanState = fan;
+    logBuffer[logIndex].servoState = servo;
     logIndex++;
     if (logIndex >= MAX_LOG_ENTRIES) {
       logIndex = 0;
@@ -76,6 +78,7 @@ void logData(float temp, float hum, bool heater, bool atomizer, bool fan) {
     logBuffer[logIndex].heaterState = heater;
     logBuffer[logIndex].atomizerState = atomizer;
     logBuffer[logIndex].fanState = fan;
+    logBuffer[logIndex].servoState = servo;
     logIndex++;
   }
   
@@ -96,7 +99,8 @@ void getLogDataForWeb(String& json) {
              ",\"hum\":" + String(logBuffer[idx].humidity, 1) +
              ",\"h\":" + String(logBuffer[idx].heaterState ? "true" : "false") +
              ",\"a\":" + String(logBuffer[idx].atomizerState ? "true" : "false") +
-             ",\"f\":" + String(logBuffer[idx].fanState ? "true" : "false") + "}";
+             ",\"f\":" + String(logBuffer[idx].fanState ? "true" : "false") +
+             ",\"s\":" + String(logBuffer[idx].servoState ? "true" : "false") + "}";
       if (i < entriesToShow - 1) json += ",";
     }
     json += "]";

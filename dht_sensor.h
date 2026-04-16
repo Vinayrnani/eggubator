@@ -5,7 +5,21 @@
 
 #define DHTPIN D4
 
+bool useMockSensor = false;
+float mockTemp = 25.0;
+float mockHum = 50.0;
+
+void setMockSensor(bool enable) {
+  useMockSensor = enable;
+}
+
+void setMockValues(float temp, float hum) {
+  mockTemp = temp;
+  mockHum = hum;
+}
+
 float readDHT22() {
+  if (useMockSensor) return mockTemp;
   int data[5] = {0, 0, 0, 0, 0};
   
   pinMode(DHTPIN, OUTPUT);
@@ -40,6 +54,7 @@ float readDHT22() {
 }
 
 float readHumidity() {
+  if (useMockSensor) return mockHum;
   int data[5] = {0, 0, 0, 0, 0};
   
   pinMode(DHTPIN, OUTPUT);
