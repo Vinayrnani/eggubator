@@ -1,141 +1,23 @@
+// ============================================
+// EGG INCUBATOR CONTROLLER - Modular Version
+// ============================================
+
+// Include header files
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266HTTPClient.h>
 #include <Servo.h>
-
-#define DHTPIN D4
-#define DHTTYPE DHT22
-
-#define RELAY_HEATER D1
-#define RELAY_ATOMIZER D2
-#define RELAY_FAN D3
-#define SERVO_PIN D5
-
-// Simple DHT22 read without library
-float readDHT22() {
-  int data[5] = {0, 0, 0, 0, 0};
-  unsigned long startTime = millis();
-  
-  pinMode(DHTPIN, OUTPUT);
-  digitalWrite(DHTPIN, LOW);
-  delay(18);
-  digitalWrite(DHTPIN, HIGH);
-  delayMicroseconds(30);
-  pinMode(DHTPIN, INPUT);
-  
-  unsigned long timeout = micros();
-  while (digitalRead(DHTPIN) == LOW) {
-    if (micros() - timeout > 100) return -1;
-  }
-  timeout = micros();
-  while (digitalRead(DHTPIN) == HIGH) {
-    if (micros() - timeout > 100) return -1;
-  }
-  
-  for (int i = 0; i < 40; i++) {
-    unsigned long bitStart = micros();
-    while (digitalRead(DHTPIN) == LOW) {
-      if (micros() - bitStart > 50) break;
-    }
-    unsigned long bitEnd = micros();
-    if (bitEnd - bitStart > 40) data[i / 8] |= (1 << (7 - i % 8));
-  }
-  
-  if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-    return (float)((data[0] << 8) + data[1]) / 10.0;
-  }
-  return -1;
-}
-
-float readHumidity() {
-  int data[5] = {0, 0, 0, 0, 0};
-  
-  pinMode(DHTPIN, OUTPUT);
-  digitalWrite(DHTPIN, LOW);
-  delay(18);
-  digitalWrite(DHTPIN, HIGH);
-  delayMicroseconds(30);
-  pinMode(DHTPIN, INPUT);
-  
-  unsigned long timeout = micros();
-  while (digitalRead(DHTPIN) == LOW) {
-    if (micros() - timeout > 100) return -1;
-  }
-  timeout = micros();
-  while (digitalRead(DHTPIN) == HIGH) {
-    if (micros() - timeout > 100) return -1;
-  }
-  
-  for (int i = 0; i < 40; i++) {
-    unsigned long bitStart = micros();
-    while (digitalRead(DHTPIN) == LOW) {
-      if (micros() - bitStart > 50) break;
-    }
-    unsigned long bitEnd = micros();
-    if (bitEnd - bitStart > 40) data[i / 8] |= (1 << (7 - i % 8));
-  }
-  
-  if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-    return (float)((data[2] << 8) + data[3]) / 10.0;
-  }
-  return -1;
-}
-
-const char* ssid = "Sweet Home";
-const char* password = "dishoom1234";
-
-const char* firmwareUrl = "http://YOUR_SERVER/firmware.bin";
-const char* versionUrl = "http://YOUR_SERVER/version.txt";
-
-const char* firmwareVersion = "1.2.1";
-
-const float TARGET_TEMP = 37.5;
-const float TEMP_HYSTERESIS = 0.5;
-const float TARGET_HUMIDITY = 60.0;
-const float HUMIDITY_HYSTERESIS = 5.0;
-const float MAX_SAFE_TEMP = 38.0;
-
-// Pulsating humidity control timing
-const unsigned long PULSE_ON_TIME = 3000;
-const unsigned long PULSE_OFF_TIME = 10000;
-
-// Fan extension timing
-const unsigned long FAN_EXTEND_TIME = 5000;
-
-// Data logging - RAM with EEPROM checkpoint for power failure detection
 #include <EEPROM.h>
 
-const unsigned long LOG_INTERVAL = 30000;
-const int MAX_LOG_ENTRIES = 100;
+#include "config.h"
+#include "dht_sensor.h"
+#include "wifi_manager.h"
+#include "logging.h"
+#include "updates.h"
 
-struct LogEntry {
-  unsigned long timestamp;
-  float temperature;
-  float humidity;
-  bool heaterState;
-  bool atomizerState;
-  bool fanState;
-};
-
-// RAM storage for logging
-LogEntry logBuffer[MAX_LOG_ENTRIES];
-int logIndex = 0;
-bool logFull = false;
-unsigned long lastLogTime = 0;
-
-// EEPROM addresses for power failure detection
-const int EEPROM_MAGIC = 0;
-const int EEPROM_INDEX = 1;
-const int EEPROM_CHECK = 2;
-const unsigned char MAGIC_VAL = 0x42;
-const unsigned char CHECK_VAL = 0xAB;
-
-Servo eggServo;
-ESP8266WebServer server(80);
-ESP8266HTTPUpdateServer httpUpdater;
-
+// Global variables
 float currentTemp = 0;
 float currentHumidity = 0;
 bool heaterState = false;
@@ -146,16 +28,28 @@ unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
 
-// Pulsating humidity control state
+// Control state variables
 unsigned long atomizerPulseStart = 0;
 bool atomizerPulsing = false;
-
-// Fan timing state
 unsigned long heaterLastChanged = 0;
 bool heaterWasOn = false;
 unsigned long atomizerLastChanged = 0;
 bool atomizerWasOn = false;
 
+// Log buffer (defined in logging.h)
+LogEntry logBuffer[MAX_LOG_ENTRIES];
+int logIndex = 0;
+bool logFull = false;
+unsigned long lastLogTime = 0;
+
+// Web server
+ESP8266WebServer server(80);
+ESP8266HTTPUpdateServer httpUpdater;
+Servo eggServo;
+
+// ============================================
+// WEB INTERFACE HTML
+// ============================================
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -174,7 +68,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .btn-on { background: #4CAF50; color: white; }
     .btn-off { background: #f44336; color: white; }
     .btn-auto { background: #2196F3; color: white; }
-    .slider { width: 100%; margin: 10px 0; }
     .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     canvas { background: #fafafa; border: 1px solid #ddd; }
   </style>
@@ -182,8 +75,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
   <h1>Egg Incubator</h1>
   <div class="card">
-    <div class="label">Firmware Version</div>
+    <div class="label">Firmware</div>
     <div class="stat" id="version">--</div>
+    <div class="label">Uptime</div>
+    <div class="stat" id="uptime">--</div>
   </div>
   <div class="card status-grid">
     <div>
@@ -215,19 +110,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <button class="btn btn-off" onclick="toggleDevice('fan','off')">OFF</button>
     </div>
     <div>
-      <div class="label">Egg Turner (Servo)</div>
+      <div class="label">Egg Turner</div>
       <div class="stat" id="servo">OFF</div>
       <button class="btn btn-on" onclick="toggleDevice('servo','on')">ON</button>
       <button class="btn btn-off" onclick="toggleDevice('servo','off')">OFF</button>
     </div>
   </div>
-  <div class="card">
+    <div class="card">
     <div class="label">Target Settings</div>
-    <div>Temp: 37.5°C | Humidity: 60%</div>
+    <div id="targets">Temp: 37.5°C | Humidity: 60%</div>
   </div>
   <div class="card">
     <div class="label">OTA Update</div>
-    <button class="btn btn-auto" onclick="checkOta()">Check for Update</button>
+    <button class="btn btn-auto" onclick="checkOta()">Check Update</button>
     <div id="otaStatus"></div>
   </div>
   <div class="card">
@@ -244,20 +139,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('version').textContent = d.version;
         document.getElementById('temp').textContent = d.temperature.toFixed(1) + '°C';
         document.getElementById('hum').textContent = d.humidity.toFixed(1) + '%';
-        
+        document.getElementById('uptime').textContent = d.uptime;
         document.getElementById('heater').textContent = d.heater ? 'ON' : 'OFF';
         document.getElementById('heater').className = 'stat ' + (d.heater ? 'on' : 'off');
-        
         document.getElementById('atomizer').textContent = d.atomizer ? 'ON' : 'OFF';
         document.getElementById('atomizer').className = 'stat ' + (d.atomizer ? 'on' : 'off');
-        
         document.getElementById('fan').textContent = d.fan ? 'ON' : 'OFF';
         document.getElementById('fan').className = 'stat ' + (d.fan ? 'on' : 'off');
-        
         document.getElementById('servo').textContent = d.servo ? 'ON' : 'OFF';
         document.getElementById('servo').className = 'stat ' + (d.servo ? 'on' : 'off');
-        
-        // Draw charts if log data available
         if (d.log && d.log.length > 0) {
           drawTempChart(d.log);
           drawHumChart(d.log);
@@ -270,27 +160,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const w = canvas.width = canvas.offsetWidth;
       const h = canvas.height = 150;
       ctx.clearRect(0, 0, w, h);
-      
       if (!logData || logData.length < 2) return;
-      
-      const maxTemp = 40;
-      const minTemp = 35;
-      
+      const maxTemp = 40, minTemp = 35;
       ctx.beginPath();
       ctx.strokeStyle = '#ff5722';
       ctx.lineWidth = 2;
-      
       for (let i = 0; i < logData.length; i++) {
         const x = (i / (logData.length - 1)) * w;
-        const temp = logData[i].temp;
-        const y = h - ((temp - minTemp) / (maxTemp - minTemp)) * h;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const y = h - ((logData[i].temp - minTemp) / (maxTemp - minTemp)) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      
-      // Draw target line
-      const targetY = h - ((37.5 - minTemp) / (maxTemp - minTemp)) * h;
+      const targetY = h - ((TARGET_TEMP - minTemp) / (maxTemp - minTemp)) * h;
       ctx.beginPath();
       ctx.strokeStyle = '#4CAF50';
       ctx.setLineDash([5, 5]);
@@ -305,27 +186,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const w = canvas.width = canvas.offsetWidth;
       const h = canvas.height = 150;
       ctx.clearRect(0, 0, w, h);
-      
       if (!logData || logData.length < 2) return;
-      
-      const maxHum = 80;
-      const minHum = 40;
-      
+      const maxHum = 80, minHum = 40;
       ctx.beginPath();
       ctx.strokeStyle = '#2196F3';
       ctx.lineWidth = 2;
-      
       for (let i = 0; i < logData.length; i++) {
         const x = (i / (logData.length - 1)) * w;
-        const hum = logData[i].hum;
-        const y = h - ((hum - minHum) / (maxHum - minHum)) * h;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const y = h - ((logData[i].hum - minHum) / (maxHum - minHum)) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      
-      // Draw target line
-      const targetY = h - ((60 - minHum) / (maxHum - minHum)) * h;
+      const targetY = h - ((TARGET_HUMIDITY - minHum) / (maxHum - minHum)) * h;
       ctx.beginPath();
       ctx.strokeStyle = '#4CAF50';
       ctx.setLineDash([5, 5]);
@@ -355,22 +227,32 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+// ============================================
+// WEB SERVER HANDLERS
+// ============================================
 void handleRoot() {
-  server.send(200, "text/html", INDEX_HTML);
+  server.send(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
 void handleData() {
+  unsigned long uptimeSec = millis() / 1000;
+  int days = uptimeSec / 86400;
+  int hours = (uptimeSec % 86400) / 3600;
+  int mins = (uptimeSec % 3600) / 60;
+  int secs = uptimeSec % 60;
+  String uptimeStr = "";
+  if (days > 0) uptimeStr += String(days) + "d ";
+  uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
+  
   String json = "{\"temperature\":" + String(currentTemp) +
                ",\"humidity\":" + String(currentHumidity) +
                ",\"heater\":" + String(heaterState ? "true" : "false") +
                ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
                ",\"fan\":" + String(fanState ? "true" : "false") +
                ",\"servo\":" + String(servoEnabled ? "true" : "false") +
-               ",\"version\":\"" + String(firmwareVersion) + "\"";
-
-  // Add log data for charts from filesystem
+               ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
+               ",\"uptime\":\"" + uptimeStr + "\"";
   getLogDataForWeb(json);
-  
   json += "}";
   server.send(200, "application/json", json);
 }
@@ -399,14 +281,14 @@ void handleControl() {
 
 void handleOtaCheck() {
   HTTPClient http;
-  WiFiClient wifiClient;
-  http.begin(wifiClient, versionUrl);
+  WiFiClient client;
+  http.begin(client, VERSION_URL);
   int httpCode = http.GET();
   
   if (httpCode == 200) {
     String remoteVersion = http.getString();
     remoteVersion.trim();
-    bool hasUpdate = (remoteVersion != firmwareVersion);
+    bool hasUpdate = (remoteVersion != FIRMWARE_VERSION);
     String json = "{\"update\":" + String(hasUpdate ? "true" : "false") + ",\"version\":\"" + remoteVersion + "\"}";
     server.send(200, "application/json", json);
   } else {
@@ -416,68 +298,17 @@ void handleOtaCheck() {
 }
 
 void handleOtaUpdate() {
-  HTTPClient http;
-  WiFiClient wifiClient;
-  http.begin(wifiClient, firmwareUrl);
-  int httpCode = http.GET();
-  
-  if (httpCode == 200) {
-    WiFiClient* stream = http.getStreamPtr();
-    size_t contentLength = http.getSize();
-    if (Update.begin(contentLength)) {
-      if (Update.writeStream(*stream) && Update.end(true)) {
-        server.send(200, "application/json", "{\"status\":\"success. Rebooting...\"}");
-        delay(1000);
-        ESP.restart();
-      }
-    }
-  }
-  http.end();
-  server.send(200, "application/json", "{\"status\":\"update failed\"}");
+  performUpdate();
 }
 
-void checkOtaAuto() {
-  static bool otaInProgress = false;
-  if (otaInProgress) return;
-  
-  HTTPClient http;
-  WiFiClient wifiClient;
-  http.begin(wifiClient, versionUrl);
-  int httpCode = http.GET();
-  
-  if (httpCode == 200) {
-    String remoteVersion = http.getString();
-    remoteVersion.trim();
-    
-    if (remoteVersion != firmwareVersion) {
-      Serial.print("New firmware: ");
-      Serial.println(remoteVersion);
-      otaInProgress = true;
-      http.end();
-      
-      http.begin(wifiClient, firmwareUrl);
-      httpCode = http.GET();
-      
-      if (httpCode == 200) {
-        WiFiClient* stream = http.getStreamPtr();
-        size_t contentLength = http.getSize();
-        if (Update.begin(contentLength) && Update.writeStream(*stream) && Update.end(true)) {
-          delay(1000);
-          ESP.restart();
-        }
-      }
-      http.end();
-      otaInProgress = false;
-    }
-  }
-  http.end();
-}
-
+// ============================================
+// AUTO CONTROL LOGIC
+// ============================================
 void autoControl() {
   if (!isnan(currentTemp) && !isnan(currentHumidity)) {
     unsigned long now = millis();
     
-    // Temperature control - turn on heater when cold
+    // Temperature control
     if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
       heaterState = true;
     } else if (currentTemp > TARGET_TEMP + TEMP_HYSTERESIS) {
@@ -485,13 +316,12 @@ void autoControl() {
     }
     digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
     
-    // Track heater state changes for fan timing
     if (heaterState != heaterWasOn) {
       heaterLastChanged = now;
       heaterWasOn = heaterState;
     }
     
-    // Pulsating humidity control - 3s ON, 10s OFF
+    // Pulsating humidity control (3s ON, 10s OFF)
     if (currentHumidity < TARGET_HUMIDITY) {
       if (!atomizerPulsing) {
         atomizerState = true;
@@ -511,7 +341,6 @@ void autoControl() {
       }
     }
     
-    // Track atomizer state changes for fan timing
     if (atomizerState != atomizerWasOn) {
       atomizerLastChanged = now;
       atomizerWasOn = atomizerState;
@@ -523,8 +352,7 @@ void autoControl() {
     bool humStable = (currentHumidity >= TARGET_HUMIDITY - HUMIDITY_HYSTERESIS && 
                     currentHumidity <= TARGET_HUMIDITY + HUMIDITY_HYSTERESIS);
     
-    // Fan control - ON/OFF only (no speed control)
-    // ON when: heater ON, heater was ON within 5s, atomizer ON, atomizer was ON within 5s, or overheating
+    // Fan control
     bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
     bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
     
@@ -538,6 +366,9 @@ void autoControl() {
   }
 }
 
+// ============================================
+// EGG TURNER
+// ============================================
 void rotateEggs() {
   static int servoPos = 0;
   static bool sweeping = false;
@@ -561,93 +392,42 @@ void rotateEggs() {
   }
 }
 
-// RAM-based logging with EEPROM checkpoint for persistence
-void initLogging() {
-  EEPROM.begin(512);
-  
-  // Check for power cycle using magic bytes
-  unsigned char magic = EEPROM.read(EEPROM_MAGIC);
-  unsigned char check = EEPROM.read(EEPROM_CHECK);
-  unsigned char savedIndex = EEPROM.read(EEPROM_INDEX);
-  
-  if (magic == MAGIC_VAL && check == CHECK_VAL && savedIndex <= MAX_LOG_ENTRIES) {
-    // Valid checkpoint found - restore log index
-    logIndex = savedIndex;
-    logFull = (logIndex >= MAX_LOG_ENTRIES);
-    Serial.println("Restored log data from EEPROM");
-  } else {
-    // No valid checkpoint - start fresh
-    logIndex = 0;
-    logFull = false;
-    Serial.println("Starting fresh log");
-  }
-  
-  Serial.print("Log entries: ");
-  Serial.println(logIndex);
+// Rollback endpoints
+void handleReboot() {
+  server.send(200, "text/plain", "Rebooting...");
+  delay(500);
+  ESP.restart();
 }
 
-void saveCheckpoint() {
-  // Save checkpoint to EEPROM
-  EEPROM.write(EEPROM_MAGIC, MAGIC_VAL);
-  EEPROM.write(EEPROM_INDEX, (unsigned char)logIndex);
-  EEPROM.write(EEPROM_CHECK, CHECK_VAL);
+void handleRollback() {
+  // Trigger rollback - restore previous firmware if available
+  Serial.println("Rollback triggered - resetting boot counter");
+  EEPROM.write(EEPROM_BOOT_COUNT, MAX_BOOT_FAILURES);
   EEPROM.commit();
+  server.send(200, "text/plain", "Rollback: please reflash to recover");
 }
 
-void logData() {
-  // Store in RAM buffer
-  if (logIndex < MAX_LOG_ENTRIES) {
-    logBuffer[logIndex].timestamp = millis();
-    logBuffer[logIndex].temperature = currentTemp;
-    logBuffer[logIndex].humidity = currentHumidity;
-    logBuffer[logIndex].heaterState = heaterState;
-    logBuffer[logIndex].atomizerState = atomizerState;
-    logBuffer[logIndex].fanState = fanState;
-    logIndex++;
-    if (logIndex >= MAX_LOG_ENTRIES) {
-      logIndex = 0;
-      logFull = true;
-    }
-  } else {
-    // Circular buffer - overwrite oldest
-    logIndex = 0;
-    logFull = true;
-    logBuffer[logIndex].timestamp = millis();
-    logBuffer[logIndex].temperature = currentTemp;
-    logBuffer[logIndex].humidity = currentHumidity;
-    logBuffer[logIndex].heaterState = heaterState;
-    logBuffer[logIndex].atomizerState = atomizerState;
-    logBuffer[logIndex].fanState = fanState;
-    logIndex++;
-  }
-  
-  // Save checkpoint to EEPROM periodically
-  saveCheckpoint();
+void handleRecovery() {
+  // Enter recovery mode - reset EEPROM and await reflash
+  EEPROM.write(EEPROM_BOOT_OK, 0);
+  EEPROM.write(EEPROM_BOOT_COUNT, 0);
+  EEPROM.commit();
+  server.send(200, "text/plain", "Recovery mode - please reflash");
 }
 
-void getLogDataForWeb(String& json) {
-  int startIdx = logFull ? logIndex : 0;
-  int count = logFull ? MAX_LOG_ENTRIES : logIndex;
-  int entriesToShow = min(20, count);
-  
-  if (entriesToShow > 0) {
-    json += ",\"log\":[";
-    for (int i = 0; i < entriesToShow; i++) {
-      int idx = (startIdx + i) % MAX_LOG_ENTRIES;
-      json += "{\"t\":" + String(logBuffer[idx].timestamp) +
-             ",\"temp\":" + String(logBuffer[idx].temperature, 1) +
-             ",\"hum\":" + String(logBuffer[idx].humidity, 1) +
-             ",\"h\":" + String(logBuffer[idx].heaterState ? "true" : "false") +
-             ",\"a\":" + String(logBuffer[idx].atomizerState ? "true" : "false") +
-             ",\"f\":" + String(logBuffer[idx].fanState ? "true" : "false") + "}";
-      if (i < entriesToShow - 1) json += ",";
-    }
-    json += "]";
-  } else {
-    json += ",\"log\":[]";
-  }
+void handleRecoveryReset() {
+  // Reset recovery mode - allow normal boot
+  EEPROM.write(EEPROM_BOOT_OK, BOOT_OK_MAGIC);
+  EEPROM.write(EEPROM_BOOT_COUNT, 0);
+  EEPROM.commit();
+  server.send(200, "text/plain", "Recovery reset - normal boot enabled");
+  delay(500);
+  ESP.restart();
 }
 
+// ============================================
+// MAIN SETUP
+// ============================================
 void setup() {
   Serial.begin(115200);
   
@@ -661,48 +441,32 @@ void setup() {
   eggServo.attach(SERVO_PIN);
 
   initLogging();
+  initRecovery();
+  connectWiFi();
+  markBootSuccess();
 
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  
-  // First connect to get network details
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  
-  // Get network info
-  IPAddress localIP = WiFi.localIP();
-  IPAddress gatewayIP = WiFi.gatewayIP();
-  IPAddress subnetIP = WiFi.subnetMask();
-  Serial.print("Got IP: ");
-  Serial.println(localIP);
-  
-  // Now reconnect with static IP ending in .100
-  localIP[3] = 100;
-  WiFi.config(localIP, gatewayIP, subnetIP);
-  WiFi.begin(ssid, password);
-  delay(1000);
-  
-  Serial.print("Static IP: ");
-  Serial.println(WiFi.localIP());
   Serial.print("Firmware: ");
-  Serial.println(firmwareVersion);
+  Serial.println(FIRMWARE_VERSION);
 
-  httpUpdater.setup(&server);
+  // Setup web server
   server.on("/", handleRoot);
   server.on("/data", handleData);
   server.on("/control", handleControl);
-  server.on("/ota/check", handleOtaCheck);
+server.on("/ota/check", handleOtaCheck);
   server.on("/ota/update", handleOtaUpdate);
+  server.on("/reboot", handleReboot);
+  server.on("/rollback", handleRollback);
+  server.on("/recovery", handleRecovery);
+  server.on("/recovery/reset", handleRecoveryReset);
+  httpUpdater.setup(&server);
   server.begin();
 
   Serial.println("HTTP server started");
-  Serial.println("Pins: Heater=D1, Atomizer=D2, Fan=D3, Servo=D5");
 }
 
+// ============================================
+// MAIN LOOP
+// ============================================
 void loop() {
   server.handleClient();
 
@@ -718,9 +482,8 @@ void loop() {
     lastReadTime = millis();
   }
 
-  // Data logging to filesystem for web interface charts
   if (millis() - lastLogTime >= LOG_INTERVAL) {
-    logData();
+    logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState);
     lastLogTime = millis();
   }
 
@@ -729,7 +492,7 @@ void loop() {
   }
 
   if (millis() - lastOtaCheck > 3600000) {
-    checkOtaAuto();
+    checkAndUpdateAuto();
     lastOtaCheck = millis();
   }
 }
