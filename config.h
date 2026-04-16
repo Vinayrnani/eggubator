@@ -1,0 +1,31 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// WiFi Configuration
+#define WIFI_SSID "Sweet Home"
+#define WIFI_PASSWORD "dishoom1234"
+
+// Target Values
+#define TARGET_TEMP 37.5
+#define TEMP_HYSTERESIS 0.5
+#define TARGET_HUMIDITY 60.0
+#define HUMIDITY_HYSTERESIS 5.0
+#define MAX_SAFE_TEMP 38.0
+
+// Pin Definitions
+#define DHTPIN D4
+#define RELAY_HEATER D1
+#define RELAY_ATOMIZER D2
+#define RELAY_FAN D3
+#define SERVO_PIN D5
+
+// Timing Constants
+#define PULSE_ON_TIME 3000
+#define PULSE_OFF_TIME 10000
+#define FAN_EXTEND_TIME 5000
+#define LOG_INTERVAL 30000
+
+// Storage
+#define MAX_LOG_ENTRIES 100
+
+#endif
