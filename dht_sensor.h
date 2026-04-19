@@ -2,12 +2,43 @@
 #define DHT_SENSOR_H
 
 #include <Arduino.h>
+#include <DHT.h>
 
 #define DHTPIN D4
+#define DHTTYPE DHT22
+
+DHT dht(DHTPIN, DHTTYPE);
 
 bool useMockSensor = false;
+bool autoSimMode = false;
 float mockTemp = 25.0;
 float mockHum = 50.0;
+float simTemp = 25.0;
+float simHum = 40.0;
+float lastValidTemp = 0.0;
+float lastValidHum = 0.0;
+
+const float SIM_AMBIENT_TEMP = 32.0;
+const float SIM_AMBIENT_HUM = 35.0;
+const float SIM_TARGET_TEMP = 39.0;
+const float SIM_TARGET_HUM = 70.0;
+const float SIM_FAN_COOL = 0.3;
+const float SIM_SPEED_RISE = 0.08;
+const float SIM_SPEED_DROP = 0.015;
+const float SIM_NOISE_TEMP = 0.1;
+const float SIM_NOISE_HUM = 1.0;
+
+void setAutoSim(bool enable);
+void updateAutoSim(bool heaterOn, bool atomizerOn, bool fanOn);
+float getSimTempWithNoise();
+float getSimHumWithNoise();
+
+extern float simTemp;
+extern float simHum;
+
+void initDHT() {
+  dht.begin();
+}
 
 void setMockSensor(bool enable) {
   useMockSensor = enable;
@@ -19,73 +50,60 @@ void setMockValues(float temp, float hum) {
 }
 
 float readDHT22() {
+  if (autoSimMode) return getSimTempWithNoise();
   if (useMockSensor) return mockTemp;
-  int data[5] = {0, 0, 0, 0, 0};
   
-  pinMode(DHTPIN, OUTPUT);
-  digitalWrite(DHTPIN, LOW);
-  delay(18);
-  digitalWrite(DHTPIN, HIGH);
-  delayMicroseconds(30);
-  pinMode(DHTPIN, INPUT);
-  
-  unsigned long timeout = micros();
-  while (digitalRead(DHTPIN) == LOW) {
-    if (micros() - timeout > 100) return -1;
+  float t = dht.readTemperature();
+  if (!isnan(t)) {
+    lastValidTemp = t;
+    return t;
   }
-  timeout = micros();
-  while (digitalRead(DHTPIN) == HIGH) {
-    if (micros() - timeout > 100) return -1;
-  }
-  
-  for (int i = 0; i < 40; i++) {
-    unsigned long bitStart = micros();
-    while (digitalRead(DHTPIN) == LOW) {
-      if (micros() - bitStart > 50) break;
-    }
-    unsigned long bitEnd = micros();
-    if (bitEnd - bitStart > 40) data[i / 8] |= (1 << (7 - i % 8));
-  }
-  
-  if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-    return (float)((data[0] << 8) + data[1]) / 10.0;
-  }
-  return -1;
+  return lastValidTemp > 0 ? lastValidTemp : -1;
 }
 
 float readHumidity() {
+  if (autoSimMode) return getSimHumWithNoise();
   if (useMockSensor) return mockHum;
-  int data[5] = {0, 0, 0, 0, 0};
   
-  pinMode(DHTPIN, OUTPUT);
-  digitalWrite(DHTPIN, LOW);
-  delay(18);
-  digitalWrite(DHTPIN, HIGH);
-  delayMicroseconds(30);
-  pinMode(DHTPIN, INPUT);
+  float h = dht.readHumidity();
+  if (!isnan(h)) {
+    lastValidHum = h;
+    return h;
+  }
+  return lastValidHum > 0 ? lastValidHum : -1;
+}
+
+void setAutoSim(bool enable) {
+  autoSimMode = enable;
+  if (enable) {
+    useMockSensor = false;
+    simTemp = SIM_AMBIENT_TEMP;
+    simHum = SIM_AMBIENT_HUM;
+    randomSeed(millis());
+  }
+}
+
+void updateAutoSim(bool heaterOn, bool atomizerOn, bool fanOn) {
+  if (!autoSimMode) return;
   
-  unsigned long timeout = micros();
-  while (digitalRead(DHTPIN) == LOW) {
-    if (micros() - timeout > 100) return -1;
-  }
-  timeout = micros();
-  while (digitalRead(DHTPIN) == HIGH) {
-    if (micros() - timeout > 100) return -1;
-  }
+  float targetT = heaterOn ? SIM_TARGET_TEMP : SIM_AMBIENT_TEMP;
+  float targetH = atomizerOn ? SIM_TARGET_HUM : SIM_AMBIENT_HUM;
+  float fanCool = fanOn ? SIM_FAN_COOL : 0.0;
+  float speedT = (heaterOn || simTemp < targetT) ? SIM_SPEED_RISE : SIM_SPEED_DROP;
+  float speedH = (atomizerOn || simHum < targetH) ? SIM_SPEED_RISE : SIM_SPEED_DROP;
   
-  for (int i = 0; i < 40; i++) {
-    unsigned long bitStart = micros();
-    while (digitalRead(DHTPIN) == LOW) {
-      if (micros() - bitStart > 50) break;
-    }
-    unsigned long bitEnd = micros();
-    if (bitEnd - bitStart > 40) data[i / 8] |= (1 << (7 - i % 8));
-  }
-  
-  if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-    return (float)((data[2] << 8) + data[3]) / 10.0;
-  }
-  return -1;
+  simTemp += (targetT - simTemp - fanCool) * speedT;
+  simHum += (targetH - simHum) * speedH;
+}
+
+float getSimTempWithNoise() {
+  float noise = random(-10, 11) / 100.0;
+  return simTemp + noise;
+}
+
+float getSimHumWithNoise() {
+  float noise = random(-10, 11) / 10.0;
+  return simHum + noise;
 }
 
 #endif

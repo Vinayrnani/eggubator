@@ -18,9 +18,15 @@
 #include "updates.h"
 
 extern bool useMockSensor;
+extern bool autoSimMode;
 extern float mockTemp;
 extern float mockHum;
-extern bool autoMode;
+extern float simTemp;
+extern float simHum;
+extern void updateAutoSim(bool heater, bool atomizer, bool fan);
+
+#define KILL_OFF 0
+#define AUTO 1
 
 // Global variables
 float currentTemp = 0;
@@ -29,9 +35,11 @@ bool heaterState = false;
 bool atomizerState = false;
 bool fanState = false;
 bool servoEnabled = false;
-bool autoMode = true;
-unsigned long manualModeStart = 0;
-String manualModeReason = "";
+int servoPosition = 0; // -1 = -45deg, 0 = center, 1 = +45deg
+int heaterMode = AUTO;
+int atomizerMode = AUTO;
+int fanMode = AUTO;
+int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
@@ -64,6 +72,12 @@ ESP8266HTTPUpdateServer httpUpdater;
 Servo eggServo;
 
 // ============================================
+// WEB INTERFACE HTML (from web_ui.h)
+// ============================================
+
+// ============================================
+// WEB SERVER HANDLERS
+// ============================================
 // WEB INTERFACE HTML
 // ============================================
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
@@ -79,17 +93,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 15px; }
     h1 { color: white; text-align: center; font-size: 28px; margin: 10px 0 15px 0; }
     h1 span { color: #ffd700; }
-    .header { display: flex; justify-content: center; align-items: center; gap: 15px; background: rgba(255,255,255,0.25); padding: 12px 20px; border-radius: 12px; margin-bottom: 15px; flex-wrap: wrap; }
-    .mode-group { display: flex; align-items: center; gap: 8px; background: white; padding: 6px 12px; border-radius: 20px; }
-    .mode-group label { font-weight: 600; color: #333; font-size: 13px; }
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #bbb; transition: .3s; border-radius: 24px; }
-    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
-    input:checked + .slider { background-color: #2196F3; }
-    input:checked + .slider:before { transform: translateX(20px); }
-    .mode-text { font-size: 12px; color: #666; font-weight: 600; }
-    .mode-text.active { color: #2196F3; }
+.header { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.25); padding: 12px 15px; border-radius: 12px; margin-bottom: 15px; }
+.header .uptime-tag { grid-column: span 2; text-align: center; margin-top: 5px; }
+.mode-group { display: flex; align-items: center; gap: 6px; background: white; padding: 8px 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.mode-group label { font-weight: 600; color: #333; font-size: 13px; }
+.device-label { font-weight: 600; color: #555; font-size: 11px; min-width: 65px; }
+.switch { position: relative; display: inline-block; width: 52px; height: 26px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #e0e0e0; transition: .3s; border-radius: 26px; }
+.slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 2px; bottom: 2px; background: white; transition: .3s; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+input:checked + .slider { background-color: #4CAF50; }
+input:checked + .slider:before { transform: translateX(26px); }
+.mode-text { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.mode-text.killed { color: #f44336; }
+.mode-text.auto { color: #4CAF50; }
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .stat-box { text-align: center; }
     .label { color: #777; font-size: 12px; }
@@ -118,23 +135,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .alert.show { display: block; animation: fadeIn 0.3s; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     .version { text-align: center; color: rgba(255,255,255,0.8); font-size: 11px; margin-top: 10px; }
-    .uptime-tag { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; color: white; font-size: 12px; }
+    .uptime-tag { background: rgba(255,255,255,0.3); padding: 6px 15px; border-radius: 20px; color: #333; font-size: 12px; font-weight: 600; }
     @media (max-width: 400px) { .device-grid { grid-template-columns: 1fr; } .info-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="container">
     <h1><span>🥚</span> EGGubator</h1>
-    <div class="header">
-      <div class="mode-group">
-        <span class="mode-text" id="modeText">AUTO</span>
-        <label class="switch">
-          <input type="checkbox" id="modeSwitch" onchange="toggleMode()">
-          <span class="slider"></span>
-        </label>
-      </div>
-      <div class="uptime-tag" id="uptime">--</div>
-    </div>
+<div class="header">
+       <div class="mode-group">
+         <span class="device-label">Heater</span>
+         <span class="mode-text" id="heaterModeText">AUTO</span>
+         <label class="switch">
+           <input type="checkbox" id="heaterModeSwitch" onchange="toggleDeviceMode('heater')">
+           <span class="slider"></span>
+         </label>
+       </div>
+<div class="mode-group">
+          <span class="device-label">Spray</span>
+          <span class="mode-text" id="atomizerModeText">AUTO</span>
+          <label class="switch">
+            <input type="checkbox" id="atomizerModeSwitch" onchange="toggleDeviceMode('atomizer')">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="mode-group">
+          <span class="device-label">Fan</span>
+          <span class="mode-text" id="fanModeText">AUTO</span>
+          <label class="switch">
+            <input type="checkbox" id="fanModeSwitch" onchange="toggleDeviceMode('fan')">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="mode-group">
+          <span class="device-label">Egg Turner</span>
+          <span class="mode-text" id="servoModeText">AUTO</span>
+          <label class="switch">
+            <input type="checkbox" id="servoModeSwitch" onchange="toggleDeviceMode('servo')">
+            <span class="slider"></span>
+          </label>
+        </div>
+       <div class="uptime-tag" id="uptime">--</div>
+     </div>
     <div class="alert" id="alertBox"></div>
     <div class="card">
       <div class="info-grid">
@@ -183,7 +225,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       devicesInited = true;
       const grid = document.getElementById('deviceGrid');
       devices.forEach(d => {
-        grid.innerHTML += '<div class="device-card"><div class="device-name">'+d.name+'</div><div class="device-status" id="'+d.id+'">OFF</div><div class="btn-group"><button class="btn btn-on" id="'+d.id+'On" onclick="toggleDevice(\''+d.id+'\',\'on\')">ON</button><button class="btn btn-off" id="'+d.id+'Off" onclick="toggleDevice(\''+d.id+'\',\'off\')">OFF</button></div></div>';
+        grid.innerHTML += '<div class="device-card"><div class="device-name">'+d.name+'</div><div class="device-status" id="'+d.id+'">OFF</div></div>';
       });
     }
     initDevices();
@@ -197,18 +239,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         devices.forEach(dev => {
           const state = d[dev.id];
           const el = document.getElementById(dev.id);
-          const onBtn = document.getElementById(dev.id+'On');
-          const offBtn = document.getElementById(dev.id+'Off');
           el.textContent = state ? 'ON' : 'OFF';
           el.className = 'device-status ' + (state ? 'on' : 'off');
-          onBtn.disabled = d.autoMode;
-          offBtn.disabled = d.autoMode;
         });
-        const modeText = document.getElementById('modeText');
-        modeText.textContent = d.autoMode ? 'AUTO' : 'MANUAL';
-        modeText.className = 'mode-text ' + (d.autoMode ? 'active' : '');
-        document.getElementById('modeSwitch').checked = !d.autoMode;
-        if (d.reason) { document.getElementById('alertBox').textContent = d.reason; document.getElementById('alertBox').classList.add('show'); setTimeout(() => document.getElementById('alertBox').classList.remove('show'), 5000); }
+        ['heater', 'atomizer', 'fan', 'servo'].forEach(dev => {
+          const mode = d[dev + 'Mode'];
+          const modeText = document.getElementById(dev + 'ModeText');
+          const modeSwitch = document.getElementById(dev + 'ModeSwitch');
+          modeText.textContent = mode === 0 ? 'OFF' : 'AUTO';
+          modeText.className = 'mode-text ' + (mode === 0 ? 'killed' : 'auto');
+          modeSwitch.checked = (mode === 0);
+        });
         if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
       }).catch(e => console.error('Data fetch error:', e));
     }
@@ -218,31 +259,60 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (ms < 86400000) return (ms/3600000).toFixed(0)+'h';
       return (ms/86400000).toFixed(0)+'d';
     }
+    function formatTimeLabel(ms) {
+      if (ms < 60000) return Math.round(ms/1000)+'s';
+      if (ms < 3600000) return Math.round(ms/60000)+'m';
+      if (ms < 86400000) return Math.round(ms/3600000)+'h';
+      return Math.round(ms/86400000)+'d';
+    }
     function drawTempChart(logData) {
       const c = document.getElementById('tempChart');
       const ctx = c.getContext('2d');
       const w = c.width = c.offsetWidth;
       const h = c.height = 120;
+      const padL = 35, padR = 10, padT = 10, padB = 25;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
       ctx.clearRect(0, 0, w, h);
       if (!logData || logData.length < 1) return;
       
       let minT = 50, maxT = 0;
       logData.forEach(p => { if (p.temp > maxT) maxT = p.temp; if (p.temp < minT) minT = p.temp; });
       if (maxT - minT < 2) { minT = 35; maxT = 40; }
+      minT = Math.floor(minT - 1); maxT = Math.ceil(maxT + 1);
       
       const times = logData.map(p => p.t);
       const minTime = times[0], maxTime = times[times.length-1], timeRange = maxTime - minTime || 1;
       
-      ctx.beginPath(); ctx.strokeStyle = '#ff5722'; ctx.lineWidth = 2;
+      ctx.fillStyle = '#666'; ctx.font = '9px Arial'; ctx.textAlign = 'right';
+      const ySteps = 4;
+      for (let i = 0; i <= ySteps; i++) {
+        const val = minT + (maxT - minT) * (ySteps - i) / ySteps;
+        const y = padT + (i / ySteps) * plotH;
+        ctx.fillText(val.toFixed(1), padL - 4, y + 3);
+        ctx.beginPath(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+        ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      }
+      
+      ctx.strokeStyle = '#ff5722'; ctx.lineWidth = 2; ctx.beginPath();
       logData.forEach((p, i) => {
-        const x = (i / (logData.length - 1)) * w;
-        const y = h - ((p.temp - minT) / (maxT - minT)) * h;
+        const x = padL + ((p.t - minTime) / timeRange) * plotW;
+        const y = padT + ((maxT - p.temp) / (maxT - minT)) * plotH;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       });
       ctx.stroke();
       
-      const targetY = h - ((37.5 - minT) / (maxT - minT)) * h;
-      ctx.beginPath(); ctx.strokeStyle = '#4CAF50'; ctx.setLineDash([4, 4]); ctx.moveTo(0, targetY); ctx.lineTo(w, targetY); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = '#4CAF50'; ctx.setLineDash([4, 4]);
+      const targetY = padT + ((maxT - 37.5) / (maxT - minT)) * plotH;
+      ctx.beginPath(); ctx.moveTo(padL, targetY); ctx.lineTo(padL + plotW, targetY); ctx.stroke(); ctx.setLineDash([]);
+      
+      ctx.fillStyle = '#999'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+      const xLabels = 5;
+      for (let i = 0; i <= xLabels; i++) {
+        const t = minTime + (timeRange * i / xLabels);
+        const x = padL + (i / xLabels) * plotW;
+        ctx.fillText(formatTimeLabel(t - minTime), x, h - 5);
+      }
       
       document.getElementById('tempTime').textContent = formatTime(timeRange);
     }
@@ -251,26 +321,49 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const ctx = c.getContext('2d');
       const w = c.width = c.offsetWidth;
       const h = c.height = 120;
+      const padL = 35, padR = 10, padT = 10, padB = 25;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
       ctx.clearRect(0, 0, w, h);
       if (!logData || logData.length < 1) return;
       
       let minH = 100, maxH = 0;
       logData.forEach(p => { if (p.hum > maxH) maxH = p.hum; if (p.hum < minH) minH = p.hum; });
       if (maxH - minH < 5) { minH = 40; maxH = 80; }
+      minH = Math.floor(minH - 5); maxH = Math.ceil(maxH + 5);
       
       const times = logData.map(p => p.t);
       const minTime = times[0], maxTime = times[times.length-1], timeRange = maxTime - minTime || 1;
       
-      ctx.beginPath(); ctx.strokeStyle = '#2196F3'; ctx.lineWidth = 2;
+      ctx.fillStyle = '#666'; ctx.font = '9px Arial'; ctx.textAlign = 'right';
+      const ySteps = 4;
+      for (let i = 0; i <= ySteps; i++) {
+        const val = minH + (maxH - minH) * (ySteps - i) / ySteps;
+        const y = padT + (i / ySteps) * plotH;
+        ctx.fillText(val.toFixed(0), padL - 4, y + 3);
+        ctx.beginPath(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+        ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      }
+      
+      ctx.strokeStyle = '#2196F3'; ctx.lineWidth = 2; ctx.beginPath();
       logData.forEach((p, i) => {
-        const x = (i / (logData.length - 1)) * w;
-        const y = h - ((p.hum - minH) / (maxH - minH)) * h;
+        const x = padL + ((p.t - minTime) / timeRange) * plotW;
+        const y = padT + ((maxH - p.hum) / (maxH - minH)) * plotH;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       });
       ctx.stroke();
       
-      const targetY = h - ((60 - minH) / (maxH - minH)) * h;
-      ctx.beginPath(); ctx.strokeStyle = '#4CAF50'; ctx.setLineDash([4, 4]); ctx.moveTo(0, targetY); ctx.lineTo(w, targetY); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = '#4CAF50'; ctx.setLineDash([4, 4]);
+      const targetY = padT + ((maxH - 60) / (maxH - minH)) * plotH;
+      ctx.beginPath(); ctx.moveTo(padL, targetY); ctx.lineTo(padL + plotW, targetY); ctx.stroke(); ctx.setLineDash([]);
+      
+      ctx.fillStyle = '#999'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+      const xLabels = 5;
+      for (let i = 0; i <= xLabels; i++) {
+        const t = minTime + (timeRange * i / xLabels);
+        const x = padL + (i / xLabels) * plotW;
+        ctx.fillText(formatTimeLabel(t - minTime), x, h - 5);
+      }
       
       document.getElementById('humTime').textContent = formatTime(timeRange);
     }
@@ -280,39 +373,75 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       { key: 'f', name: 'Fan', color: '#4CAF50' },
       { key: 's', name: 'Turner', color: '#FF9800' }
     ];
+    const zoomState = { temp: { scale: 1, offset: 0 }, hum: { scale: 1, offset: 0 }, ctrl: { scale: 1, offset: 0 } };
+    function setupPinchZoom(canvasId, key) {
+      const c = document.getElementById(canvasId);
+      let startDist = 0, startScale = 1;
+      c.addEventListener('touchstart', e => { 
+        e.stopPropagation();
+        if (e.touches.length === 2) { 
+          startDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); 
+          startScale = zoomState[key].scale; 
+        } 
+      }, { passive: true });
+      c.addEventListener('touchmove', e => { 
+        e.stopPropagation();
+        if (e.touches.length === 2) { 
+          const dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); 
+          zoomState[key].scale = Math.max(1, Math.min(10, startScale * (dist/startDist))); 
+          updateData(); 
+        } 
+      }, { passive: true });
+    }
     function drawCtrlChart(logData) {
       const c = document.getElementById('ctrlChart');
       const ctx = c.getContext('2d');
       const w = c.width = c.offsetWidth;
       const h = c.height = 120;
+      const padL = 35, padR = 10, padT = 10, padB = 25;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
       ctx.clearRect(0, 0, w, h);
       if (!logData || logData.length < 1) return;
       
       const times = logData.map(p => p.t);
       const minTime = times[0], maxTime = times[times.length-1], timeRange = maxTime - minTime || 1;
+      const scale = zoomState.ctrl.scale;
+      const viewW = plotW / scale;
+      const offset = zoomState.ctrl.offset * (plotW - viewW);
       
       const legend = document.getElementById('ctrlLegend');
       legend.innerHTML = ctrlDevices.map(d => '<div class="legend-item"><div class="legend-dot" style="background:'+d.color+'"></div><span>'+d.name+'</span></div>').join('');
       
-      const rowH = h / 4;
+      const rowH = plotH / 4;
       ctrlDevices.forEach((dev, idx) => {
         ctx.beginPath(); ctx.strokeStyle = dev.color; ctx.lineWidth = 2;
         let started = false;
         logData.forEach((p, i) => {
-          const x = (i / (logData.length - 1)) * w;
+          const x = padL + ((p.t - minTime) / timeRange) * viewW + offset;
+          if (x < padL || x > padL + plotW) return;
           const val = p[dev.key] ? 1 : 0;
-          const y = h - (idx + 0.5) * rowH - (val * rowH * 0.35);
+          const y = padT + (idx + 0.5) * rowH + (1 - val) * rowH * 0.4;
           started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
           started = true;
         });
         ctx.stroke();
       });
+      
+      ctx.fillStyle = '#999'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+      const xLabels = 5;
+      for (let i = 0; i <= xLabels; i++) {
+        const t = minTime + (timeRange * i / xLabels);
+        const x = padL + (i / xLabels) * plotW;
+        ctx.fillText(formatTimeLabel(t - minTime), x, h - 5);
+      }
+      
       document.getElementById('ctrlTime').textContent = formatTime(timeRange);
     }
-    function toggleDevice(device, state) {
-      const onBtn = document.getElementById(device+'On');
-      if (onBtn.disabled) return;
-      fetch('/control?device='+device+'&state='+state).then(() => updateData()).catch(e => console.error(e));
+    function toggleDeviceMode(device) {
+      const modeSwitch = document.getElementById(device + 'ModeSwitch');
+      const mode = modeSwitch.checked ? 'off' : 'auto';
+      fetch('/control?device='+device+'&mode='+mode).then(() => updateData()).catch(e => console.error(e));
     }
     function checkOta() {
       document.getElementById('otaStatus').textContent = 'Checking...';
@@ -321,11 +450,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         if (d.update) fetch('/ota/update').then(r => r.json()).then(r => document.getElementById('otaStatus').textContent = r.status);
       }).catch(e => document.getElementById('otaStatus').textContent = 'Error');
     }
-    function toggleMode() {
-      const isManual = document.getElementById('modeSwitch').checked;
-      fetch('/control?mode='+(isManual?'manual':'auto')).then(() => updateData()).catch(e => console.error(e));
-    }
     window.addEventListener('resize', () => updateData());
+    setupPinchZoom('tempChart', 'temp');
+    setupPinchZoom('humChart', 'hum');
+    setupPinchZoom('ctrlChart', 'ctrl');
     setInterval(updateData, 2000);
     updateData();
   </script>
@@ -346,7 +474,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 15px; }
     h1 { color: white; text-align: center; font-size: 24px; margin: 10px 0 15px 0; }
     h1 span { color: #ffd700; }
-    .header { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.25); padding: 12px 20px; border-radius: 12px; margin-bottom: 15px; }
+    .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(255,255,255,0.25); padding: 12px 20px; border-radius: 12px; margin-bottom: 15px; }
     .mode-group { display: flex; align-items: center; gap: 8px; background: white; padding: 6px 12px; border-radius: 20px; }
     .mode-group label { font-weight: 600; color: #333; font-size: 13px; }
     .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
@@ -389,6 +517,13 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
           <span class="slider"></span>
         </label>
       </div>
+      <div class="mode-group">
+        <span class="mode-text" id="autoSimText">AUTO-SIM</span>
+        <label class="switch">
+          <input type="checkbox" id="autoSimSwitch" onchange="toggleAutoSim()">
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
     <div class="card">
       <span class="label">Mock Values</span>
@@ -425,13 +560,19 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     function updateData() {
       fetch('/data').then(r => r.json()).then(d => {
         const mockOn = d.mock;
+        const autoSimOn = d.autosim;
         document.getElementById('mockText').textContent = mockOn ? 'ON' : 'OFF';
         document.getElementById('mockText').className = 'mode-text ' + (mockOn ? 'active' : '');
         document.getElementById('mockSwitch').checked = mockOn;
+        document.getElementById('autoSimText').textContent = autoSimOn ? 'ON' : 'AUTO-SIM';
+        document.getElementById('autoSimText').className = 'mode-text ' + (autoSimOn ? 'active' : '');
+        document.getElementById('autoSimSwitch').checked = autoSimOn;
+        document.getElementById('mockSwitch').disabled = autoSimOn;
+        document.getElementById('autoSimSwitch').disabled = mockOn;
         document.getElementById('currentTemp').textContent = d.temperature.toFixed(1)+'°C';
         document.getElementById('currentHum').textContent = d.humidity.toFixed(1)+'%';
-        document.getElementById('sensorStatus').textContent = mockOn ? 'Mock' : 'Real';
-        document.getElementById('sensorStatus').className = 'stat ' + (mockOn ? 'on' : 'off');
+        document.getElementById('sensorStatus').textContent = mockOn ? 'Mock' : (autoSimOn ? 'Auto-Sim' : 'Real');
+        document.getElementById('sensorStatus').className = 'stat ' + ((mockOn || autoSimOn) ? 'on' : 'off');
         document.getElementById('setValuesBtn').disabled = !mockOn;
         if (d.sys) {
           const heapFree = d.sys.heapFree || 0;
@@ -457,6 +598,10 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     function toggleMock() {
       const enable = document.getElementById('mockSwitch').checked;
       fetch('/mock/api?enable=' + (enable ? '1' : '0')).then(r => r.text()).then(() => { userEditing = false; updateData(); loadMockValues(); }).catch(e => console.error(e));
+    }
+    function toggleAutoSim() {
+      const enable = document.getElementById('autoSimSwitch').checked;
+      fetch('/mock/api?autosim=' + (enable ? '1' : '0')).then(r => r.text()).then(() => { updateData(); }).catch(e => console.error(e));
     }
     function setMockValues() {
       const t = document.getElementById('mockTemp').value;
@@ -497,53 +642,69 @@ void handleData() {
   if (days > 0) uptimeStr += String(days) + "d ";
   uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
   
-  String json = "{\"temperature\":" + String(currentTemp) +
-               ",\"humidity\":" + String(currentHumidity) +
-               ",\"heater\":" + String(heaterState ? "true" : "false") +
-               ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
-               ",\"fan\":" + String(fanState ? "true" : "false") +
-               ",\"servo\":" + String(servoEnabled ? "true" : "false") +
-               ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
-               ",\"uptime\":\"" + uptimeStr + "\"" +
-               ",\"mock\":" + String(useMockSensor ? "true" : "false") +
-               ",\"autoMode\":" + String(autoMode ? "true" : "false") +
-               ",\"reason\":\"" + manualModeReason + "\"" +
-               ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
-               ",\"heapTotal\":81920" +
-               ",\"cpu\":" + String(cpuUtil) +
-               ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
-               ",\"flashTotal\":4194304" +
-               ",\"logCnt\":" + String(logIndex) + "}";
+String json = "{\"temperature\":" + String(currentTemp) +
+                ",\"humidity\":" + String(currentHumidity) +
+                ",\"heater\":" + String(heaterState ? "true" : "false") +
+                ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
+                ",\"fan\":" + String(fanState ? "true" : "false") +
+                ",\"servo\":" + String(servoEnabled ? "true" : "false") +
+                ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
+                ",\"uptime\":\"" + uptimeStr + "\"" +
+                ",\"mock\":" + String(useMockSensor ? "true" : "false") +
+                 ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
+                ",\"heaterMode\":" + String(heaterMode) +
+                ",\"atomizerMode\":" + String(atomizerMode) +
+                ",\"fanMode\":" + String(fanMode) +
+                ",\"servoMode\":" + String(servoMode) +
+                ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"heapTotal\":81920" +
+                ",\"cpu\":" + String(cpuUtil) +
+                ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
+                ",\"flashTotal\":4194304" +
+                ",\"logCnt\":" + String(logIndex) + "}";
   getLogDataForWeb(json);
   json += "}";
   server.send(200, "application/json", json);
 }
 
 void handleControl() {
-  if (server.hasArg("mode")) {
-    autoMode = (server.arg("mode") == "auto");
-    manualModeStart = autoMode ? 0 : millis();
-    manualModeReason = "";
-    server.send(200, "text/plain", autoMode ? "Auto mode enabled" : "Manual mode enabled");
-  } else if (server.hasArg("device") && server.hasArg("state")) {
+  if (server.hasArg("device") && server.hasArg("mode")) {
     String device = server.arg("device");
-    String state = server.arg("state");
-    bool isOn = (state == "on");
+    String mode = server.arg("mode");
+    bool isKillOff = (mode == "off");
     
     if (device == "heater") {
-      heaterState = isOn;
-      digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
+      heaterMode = isKillOff ? KILL_OFF : AUTO;
+      if (isKillOff) {
+        heaterState = false;
+        digitalWrite(RELAY_HEATER, LOW);
+      }
     } else if (device == "atomizer") {
-      atomizerState = isOn;
-      digitalWrite(RELAY_ATOMIZER, atomizerState ? HIGH : LOW);
+      atomizerMode = isKillOff ? KILL_OFF : AUTO;
+      if (isKillOff) {
+        atomizerState = false;
+        digitalWrite(RELAY_ATOMIZER, LOW);
+        atomizerPulsing = false;
+        atomizerInOffPhase = false;
+      }
     } else if (device == "fan") {
-      fanState = isOn;
-      digitalWrite(RELAY_FAN, fanState ? HIGH : LOW);
+      fanMode = isKillOff ? KILL_OFF : AUTO;
+      if (isKillOff) {
+        fanState = false;
+        digitalWrite(RELAY_FAN, LOW);
+      }
     } else if (device == "servo") {
-      servoEnabled = isOn;
+      servoMode = isKillOff ? KILL_OFF : AUTO;
+      if (isKillOff) {
+        servoEnabled = false;
+        servoPosition = 0;
+        eggServo.write(SERVO_CENTER);
+      }
     }
+    server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
+  } else {
+    server.send(200, "text/plain", "Invalid request");
   }
-  server.send(200, "text/plain", "OK");
 }
 
 void handleOtaCheck() {
@@ -569,19 +730,29 @@ void handleOtaUpdate() {
 }
 
 void handleMockSensor() {
-  if (server.hasArg("enable")) {
+  if (server.hasArg("autosim")) {
+    bool enable = (server.arg("autosim") == "1");
+    setAutoSim(enable);
+    server.send(200, "text/plain", enable ? "Auto simulation enabled" : "Auto simulation disabled");
+  } else if (server.hasArg("enable")) {
     bool enable = (server.arg("enable") == "1");
+    if (enable) setAutoSim(false);
     setMockSensor(enable);
     server.send(200, "text/plain", enable ? "Mock sensor enabled" : "Mock sensor disabled");
   } else if (server.hasArg("temp") && server.hasArg("hum")) {
     float t = server.arg("temp").toFloat();
     float h = server.arg("hum").toFloat();
+    setAutoSim(false);
+    setMockSensor(true);
     setMockValues(t, h);
     server.send(200, "text/plain", "Mock values set: " + String(t) + "C, " + String(h) + "%");
   } else {
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
+                  ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                   ",\"temp\":" + String(mockTemp) + 
-                  ",\"hum\":" + String(mockHum) + "}";
+                  ",\"hum\":" + String(mockHum) +
+                  ",\"simTemp\":" + String(simTemp) +
+                  ",\"simHum\":" + String(simHum) + "}";
     server.send(200, "application/json", json);
   }
 }
@@ -589,86 +760,91 @@ void handleMockSensor() {
 // ============================================
 // AUTO CONTROL LOGIC
 // ============================================
-void checkManualModeSafety() {
-  if (!autoMode && !isnan(currentTemp) && !isnan(currentHumidity)) {
-    if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS - 1.0 || 
-        currentTemp > TARGET_TEMP + TEMP_HYSTERESIS + 1.0 ||
-        currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS - 5.0 ||
-        currentHumidity > TARGET_HUMIDITY + HUMIDITY_HYSTERESIS + 5.0) {
-      autoMode = true;
-      manualModeReason = "Values out of range - switched to AUTO";
-    }
-  }
-}
-
 void autoControl() {
-  if (!autoMode) {
-    checkManualModeSafety();
-    return;
-  }
   if (!isnan(currentTemp) && !isnan(currentHumidity)) {
     unsigned long now = millis();
     
-    // Temperature control
-    if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
-      heaterState = true;
-    } else if (currentTemp > TARGET_TEMP + TEMP_HYSTERESIS) {
-      heaterState = false;
+    if (heaterMode == AUTO) {
+      if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
+        heaterState = true;
+      } else if (currentTemp > TARGET_TEMP + TEMP_HYSTERESIS) {
+        heaterState = false;
+      }
+      digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
+      
+      if (heaterState != heaterWasOn) {
+        heaterLastChanged = now;
+        heaterWasOn = heaterState;
+      }
+    } else {
+      if (heaterState) {
+        heaterState = false;
+        digitalWrite(RELAY_HEATER, LOW);
+        heaterWasOn = false;
+      }
     }
-    digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
     
-    if (heaterState != heaterWasOn) {
-      heaterLastChanged = now;
-      heaterWasOn = heaterState;
-    }
-    
-    // Pulsating humidity control (3s ON, 10s OFF)
-    if (currentHumidity < TARGET_HUMIDITY) {
-      if (!atomizerPulsing && !atomizerInOffPhase) {
-        atomizerState = true;
-        digitalWrite(RELAY_ATOMIZER, HIGH);
-        atomizerPulseStart = millis();
-        atomizerPulsing = true;
-      } else if (atomizerPulsing && (millis() - atomizerPulseStart >= PULSE_ON_TIME)) {
-        atomizerState = false;
-        digitalWrite(RELAY_ATOMIZER, LOW);
-        atomizerPulsing = false;
-        atomizerInOffPhase = true;
-        atomizerOffStart = millis();
-      } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= PULSE_OFF_TIME)) {
-        atomizerInOffPhase = false;
+    if (atomizerMode == AUTO) {
+      if (currentHumidity < TARGET_HUMIDITY) {
+        if (!atomizerPulsing && !atomizerInOffPhase) {
+          atomizerState = true;
+          digitalWrite(RELAY_ATOMIZER, HIGH);
+          atomizerPulseStart = millis();
+          atomizerPulsing = true;
+        } else if (atomizerPulsing && (millis() - atomizerPulseStart >= PULSE_ON_TIME)) {
+          atomizerState = false;
+          digitalWrite(RELAY_ATOMIZER, LOW);
+          atomizerPulsing = false;
+          atomizerInOffPhase = true;
+          atomizerOffStart = millis();
+        } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= PULSE_OFF_TIME)) {
+          atomizerInOffPhase = false;
+        }
+      } else {
+        if (atomizerState) {
+          atomizerState = false;
+          digitalWrite(RELAY_ATOMIZER, LOW);
+          atomizerPulsing = false;
+          atomizerInOffPhase = false;
+        }
+      }
+      
+      if (atomizerState != atomizerWasOn) {
+        atomizerLastChanged = now;
+        atomizerWasOn = atomizerState;
       }
     } else {
       if (atomizerState) {
         atomizerState = false;
         digitalWrite(RELAY_ATOMIZER, LOW);
+        atomizerWasOn = false;
         atomizerPulsing = false;
         atomizerInOffPhase = false;
       }
     }
     
-    if (atomizerState != atomizerWasOn) {
-      atomizerLastChanged = now;
-      atomizerWasOn = atomizerState;
-    }
-    
-    // Determine stability
     bool tempStable = (currentTemp >= TARGET_TEMP - TEMP_HYSTERESIS && 
                      currentTemp <= TARGET_TEMP + TEMP_HYSTERESIS);
     bool humStable = (currentHumidity >= TARGET_HUMIDITY - HUMIDITY_HYSTERESIS && 
-                    currentHumidity <= TARGET_HUMIDITY + HUMIDITY_HYSTERESIS);
+                     currentHumidity <= TARGET_HUMIDITY + HUMIDITY_HYSTERESIS);
     
-    // Fan control
-    bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
-    bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
-    
-    if (heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
-        currentTemp > MAX_SAFE_TEMP) {
-      fanState = true;
-    } else if (tempStable && humStable) {
-      fanState = false;
+    if (fanMode == AUTO) {
+      bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
+      bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
+      
+      if (heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
+          currentTemp > MAX_SAFE_TEMP) {
+        fanState = true;
+      } else if (tempStable && humStable) {
+        fanState = false;
+      }
+      digitalWrite(RELAY_FAN, fanState ? HIGH : LOW);
+    } else {
+      if (fanState) {
+        fanState = false;
+        digitalWrite(RELAY_FAN, LOW);
+      }
     }
-    digitalWrite(RELAY_FAN, fanState ? HIGH : LOW);
   }
 }
 
@@ -676,25 +852,50 @@ void autoControl() {
 // EGG TURNER
 // ============================================
 void rotateEggs() {
-  static int servoPos = 0;
-  static bool sweeping = false;
+  static bool turning = false;
+  static unsigned long turnStartTime = 0;
+  static int currentAngle = 0;
+  static bool direction = true;
   
-  if (servoEnabled && (millis() - lastServoTurn > 7200000)) {
-    if (!sweeping) {
-      for (servoPos = 0; servoPos <= 180; servoPos += 10) {
-        eggServo.write(servoPos);
-        delay(50);
-      }
-      sweeping = true;
+  if (servoEnabled && servoMode == AUTO && !turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
+    turning = true;
+    turnStartTime = millis();
+    direction = true;
+    currentAngle = SERVO_CENTER - SERVO_ANGLE;
+    eggServo.write(currentAngle);
+    servoPosition = -1;
+    Serial.println("Egg turn started");
+  }
+  
+  if (turning && (millis() - turnStartTime < EGG_TURN_DURATION)) {
+    unsigned long elapsed = millis() - turnStartTime;
+    int targetAngle;
+    
+    if (elapsed < EGG_TURN_DURATION / 2) {
+      targetAngle = map(elapsed, 0, EGG_TURN_DURATION/2, SERVO_CENTER - SERVO_ANGLE, SERVO_CENTER + SERVO_ANGLE);
+      servoPosition = 1;
     } else {
-      for (servoPos = 180; servoPos >= 0; servoPos -= 10) {
-        eggServo.write(servoPos);
-        delay(50);
-      }
-      sweeping = false;
+      targetAngle = map(elapsed, EGG_TURN_DURATION/2, EGG_TURN_DURATION, SERVO_CENTER + SERVO_ANGLE, SERVO_CENTER - SERVO_ANGLE);
+      servoPosition = -1;
     }
+    
+    if (targetAngle != currentAngle) {
+      currentAngle = targetAngle;
+      eggServo.write(targetAngle);
+    }
+  }
+  
+  if (turning && (millis() - turnStartTime >= EGG_TURN_DURATION)) {
+    turning = false;
+    eggServo.write(SERVO_CENTER - SERVO_ANGLE);
+    servoPosition = -1;
     lastServoTurn = millis();
-    Serial.println("Eggs rotated");
+    Serial.println("Egg turn completed");
+  }
+  
+  if (!servoEnabled || servoMode == KILL_OFF) {
+    servoPosition = 0;
+    eggServo.write(SERVO_CENTER);
   }
 }
 
@@ -732,13 +933,6 @@ void handleRecoveryReset() {
 }
 
 // ============================================
-// LOGS PAGE HANDLER
-// ============================================
-void handleLogsPage() {
-  server.send(200, "text/html; charset=utf-8", LOGS_HTML);
-}
-
-// ============================================
 // MAIN SETUP
 // ============================================
 void setup() {
@@ -751,6 +945,7 @@ void setup() {
   digitalWrite(RELAY_ATOMIZER, LOW);
   digitalWrite(RELAY_FAN, LOW);
 
+  initDHT();
   eggServo.attach(SERVO_PIN);
 
   initLogging();
@@ -761,10 +956,9 @@ void setup() {
   Serial.print("Firmware: ");
   Serial.println(FIRMWARE_VERSION);
 
-  // Setup web server
+// Setup web server
   server.on("/", handleRoot);
   server.on("/mock", handleMockPage);
-  server.on("/logs", handleLogsPage);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/ota/check", handleOtaCheck);
@@ -799,6 +993,9 @@ void loop() {
   }
 
   if (millis() - lastReadTime > 2000) {
+    if (autoSimMode) {
+      updateAutoSim(heaterState, atomizerState, fanState);
+    }
     float t = readDHT22();
     float h = readHumidity();
 
@@ -811,7 +1008,7 @@ void loop() {
   }
 
   if (millis() - lastLogTime >= LOG_INTERVAL) {
-    logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoEnabled);
+    logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
     lastLogTime = millis();
   }
 

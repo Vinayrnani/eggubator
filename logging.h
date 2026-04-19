@@ -10,7 +10,7 @@ struct LogEntry {
   bool heaterState;
   bool atomizerState;
   bool fanState;
-  bool servoState;
+  int servoPosition;
 };
 
 #define MAX_LOG_ENTRIES 100
@@ -55,7 +55,7 @@ void saveCheckpoint() {
   EEPROM.commit();
 }
 
-void logData(float temp, float hum, bool heater, bool atomizer, bool fan, bool servo) {
+void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo) {
   if (logIndex < MAX_LOG_ENTRIES) {
     logBuffer[logIndex].timestamp = millis();
     logBuffer[logIndex].temperature = temp;
@@ -63,7 +63,7 @@ void logData(float temp, float hum, bool heater, bool atomizer, bool fan, bool s
     logBuffer[logIndex].heaterState = heater;
     logBuffer[logIndex].atomizerState = atomizer;
     logBuffer[logIndex].fanState = fan;
-    logBuffer[logIndex].servoState = servo;
+    logBuffer[logIndex].servoPosition = servo;
     logIndex++;
     if (logIndex >= MAX_LOG_ENTRIES) {
       logIndex = 0;
@@ -78,7 +78,7 @@ void logData(float temp, float hum, bool heater, bool atomizer, bool fan, bool s
     logBuffer[logIndex].heaterState = heater;
     logBuffer[logIndex].atomizerState = atomizer;
     logBuffer[logIndex].fanState = fan;
-    logBuffer[logIndex].servoState = servo;
+    logBuffer[logIndex].servoPosition = servo;
     logIndex++;
   }
   
@@ -88,7 +88,7 @@ void logData(float temp, float hum, bool heater, bool atomizer, bool fan, bool s
 void getLogDataForWeb(String& json) {
   int startIdx = logFull ? logIndex : 0;
   int count = logFull ? MAX_LOG_ENTRIES : logIndex;
-  int entriesToShow = min(20, count);
+  int entriesToShow = count;
   
   if (entriesToShow > 0) {
     json += ",\"log\":[";
@@ -100,7 +100,7 @@ void getLogDataForWeb(String& json) {
              ",\"h\":" + String(logBuffer[idx].heaterState ? "true" : "false") +
              ",\"a\":" + String(logBuffer[idx].atomizerState ? "true" : "false") +
              ",\"f\":" + String(logBuffer[idx].fanState ? "true" : "false") +
-             ",\"s\":" + String(logBuffer[idx].servoState ? "true" : "false") + "}";
+             ",\"s\":" + String(logBuffer[idx].servoPosition ? "true" : "false") + "}";
       if (i < entriesToShow - 1) json += ",";
     }
     json += "]";

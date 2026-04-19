@@ -24,6 +24,10 @@
 #define PULSE_OFF_TIME 10000
 #define FAN_EXTEND_TIME 5000
 #define LOG_INTERVAL 5000
+#define EGG_TURN_INTERVAL 7200000  // 2 hours
+#define EGG_TURN_DURATION 10000   // 10 seconds
+#define SERVO_CENTER 90
+#define SERVO_ANGLE 45
 
 // Storage
 #define MAX_LOG_ENTRIES 100
