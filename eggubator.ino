@@ -28,6 +28,15 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 #define KILL_OFF 0
 #define AUTO 1
 
+// Configurable timing (can be changed via web)
+unsigned long LOG_INTERVAL = 10000;
+unsigned long SAVE_FLASH_INTERVAL = 7200000;
+unsigned long EGG_TURN_INTERVAL = 7200000;
+
+// Target temperature and humidity (can be changed via web/stage selection)
+unsigned long TARGET_TEMP = 375;    // Default 37.5°C
+unsigned long TARGET_HUMIDITY = 600; // Default 60.0%
+
 // Global variables
 float currentTemp = 0;
 float currentHumidity = 0;
@@ -37,6 +46,7 @@ bool fanState = false;
 bool servoEnabled = false;
 int servoPosition = 0; // -1 = -45deg, 0 = center, 1 = +45deg
 int heaterMode = AUTO;
+bool stageLockdown = false;  // false = incubation (1-18), true = lockdown (19-21)
 int atomizerMode = AUTO;
 int fanMode = AUTO;
 int servoMode = AUTO;
@@ -59,12 +69,6 @@ unsigned long heaterLastChanged = 0;
 bool heaterWasOn = false;
 unsigned long atomizerLastChanged = 0;
 bool atomizerWasOn = false;
-
-// Log buffer (defined in logging.h)
-LogEntry logBuffer[MAX_LOG_ENTRIES];
-int logIndex = 0;
-bool logFull = false;
-unsigned long lastLogTime = 0;
 
 // Web server
 ESP8266WebServer server(80);
@@ -136,6 +140,12 @@ input:checked + .slider:before { transform: translateX(26px); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     .version { text-align: center; color: rgba(255,255,255,0.8); font-size: 11px; margin-top: 10px; }
     .uptime-tag { background: rgba(255,255,255,0.3); padding: 6px 15px; border-radius: 20px; color: #333; font-size: 12px; font-weight: 600; }
+    .stage-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 8px; }
+    .stage-row select { padding: 6px 10px; border: 2px solid #667eea; border-radius: 6px; font-size: 12px; font-weight: 600; color: #333; background: white; min-width: 200px; }
+    .egg-turner-status { text-align: center; font-size: 11px; color: #f44336; font-weight: 600; margin-top: 4px; }
+    .stage-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+    .stage-incubation { background: #4CAF50; color: white; }
+    .stage-lockdown { background: #f44336; color: white; }
     @media (max-width: 400px) { .device-grid { grid-template-columns: 1fr; } .info-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -173,10 +183,17 @@ input:checked + .slider:before { transform: translateX(26px); }
           <label class="switch">
             <input type="checkbox" id="servoModeSwitch" onchange="toggleDeviceMode('servo')">
             <span class="slider"></span>
-          </label>
-        </div>
-       <div class="uptime-tag" id="uptime">--</div>
-     </div>
+</label>
+         </div>
+        <div class="uptime-tag" id="uptime">--</div>
+      </div>
+      <div class="stage-row">
+        <select id="mainStageSelect" onchange="saveMainStage()">
+          <option value="incubation">Incubation (Days 1-18)</option>
+          <option value="lockdown">Lockdown (Days 19-21)</option>
+        </select>
+      </div>
+      <div class="egg-turner-status" id="eggTurnerStatus"></div>
     <div class="alert" id="alertBox"></div>
     <div class="card">
       <div class="info-grid">
@@ -236,6 +253,13 @@ input:checked + .slider:before { transform: translateX(26px); }
         document.getElementById('temp').textContent = d.temperature.toFixed(1)+'°C';
         document.getElementById('hum').textContent = d.humidity.toFixed(1)+'%';
         document.getElementById('uptime').textContent = d.uptime;
+        document.getElementById('mainStageSelect').value = d.stageLockdown ? 'lockdown' : 'incubation';
+        const eggTurnerStatus = document.getElementById('eggTurnerStatus');
+        if (d.stageLockdown) {
+          eggTurnerStatus.textContent = 'Egg Turner: OFF (during lockdown)';
+        } else {
+          eggTurnerStatus.textContent = '';
+        }
         devices.forEach(dev => {
           const state = d[dev.id];
           const el = document.getElementById(dev.id);
@@ -252,6 +276,10 @@ input:checked + .slider:before { transform: translateX(26px); }
         });
         if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
       }).catch(e => console.error('Data fetch error:', e));
+    }
+    function saveMainStage() {
+      const stage = document.getElementById('mainStageSelect').value;
+      fetch('/mock/api?stageType=' + stage).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
     }
     function formatTime(ms) {
       if (ms < 60000) return (ms/1000).toFixed(0)+'s';
@@ -465,124 +493,187 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mock - EGGubator</title>
+  <title>Settings - EGGubator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #9C27B0 0%, #673AB7 100%); min-height: 100vh; }
-    .container { max-width: 500px; margin: 0 auto; padding: 15px; }
-    .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-bottom: 15px; }
-    h1 { color: white; text-align: center; font-size: 24px; margin: 10px 0 15px 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); min-height: 100vh; }
+    .container { max-width: 420px; margin: 0 auto; padding: 12px; }
+    .card { background: rgba(255,255,255,0.95); padding: 16px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); margin-bottom: 12px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e94560; }
+    .card-title { color: #1a1a2e; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    h1 { color: white; text-align: center; font-size: 28px; margin: 8px 0 12px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
     h1 span { color: #ffd700; }
-    .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(255,255,255,0.25); padding: 12px 20px; border-radius: 12px; margin-bottom: 15px; }
-    .mode-group { display: flex; align-items: center; gap: 8px; background: white; padding: 6px 12px; border-radius: 20px; }
-    .mode-group label { font-weight: 600; color: #333; font-size: 13px; }
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.15); padding: 10px 16px; border-radius: 12px; margin-bottom: 12px; backdrop-filter: blur(10px); }
+    .back-link { color: white; text-decoration: none; font-size: 14px; font-weight: 600; }
+    .input-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .input-row label { color: #333; font-size: 13px; font-weight: 600; }
+    select { padding: 8px 12px; border: 2px solid #e94560; border-radius: 8px; width: 140px; font-size: 13px; font-weight: 600; color: #1a1a2e; background: white; cursor: pointer; }
+    select:focus { outline: none; border-color: #0f3460; }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; width: 100%; }
+    .btn-primary { background: linear-gradient(135deg, #e94560 0%, #c53b5a 100%); color: white; box-shadow: 0 4px 15px rgba(233,69,96,0.4); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,0.5); }
+    .input-group { display: flex; gap: 10px; }
+    .input-group input { width: 80px; }
+    .input-wrapper { display: flex; align-items: center; gap: 6px; }
+    .input-wrapper span { color: #666; font-weight: 600; }
+    input[type="number"] { padding: 8px 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; font-weight: 600; width: 100%; }
+    input[type="number"]:focus { outline: none; border-color: #e94560; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+    .toggle-label { font-size: 14px; font-weight: 600; color: #333; }
+    .switch { position: relative; display: inline-block; width: 52px; height: 28px; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #bbb; transition: .3s; border-radius: 24px; }
-    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
-    input:checked + .slider { background-color: #9C27B0; }
-    input:checked + .slider:before { transform: translateX(20px); }
-    .mode-text { font-size: 12px; color: #666; font-weight: 600; }
-    .mode-text.active { color: #9C27B0; }
-    .label { color: #777; font-size: 12px; margin-bottom: 8px; display: block; }
-    .input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .input-row label { margin: 0; min-width: 45px; }
-    input[type="number"] { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; width: 90px; font-size: 14px; }
-    .btn { padding: 10px 20px; margin: 5px 5px 0 0; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-    .btn-auto { background: #9C27B0; color: white; width: 100%; }
-    .btn-back { background: white; color: #333; }
-    .status-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 28px; }
+    .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    input:checked + .slider { background: linear-gradient(135deg, #e94560 0%, #c53b5a 100%); }
+    input:checked + .slider:before { transform: translateX(24px); }
+    .mode-text { font-size: 12px; color: #666; font-weight: 700; text-transform: uppercase; }
+    .status-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
     .status-row:last-child { border-bottom: none; }
-    .stat { font-size: 20px; font-weight: bold; }
+    .stat { font-size: 18px; font-weight: bold; }
     .on { color: #4CAF50; }
     .off { color: #f44336; }
-    .msg { text-align: center; font-size: 13px; color: #666; margin-top: 8px; min-height: 20px; }
-    .back-link { color: white; text-decoration: none; font-size: 14px; }
-    .sys-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+    .sys-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 12px; }
     .sys-row:last-child { border-bottom: none; }
-    .sys-label { color: #666; font-size: 12px; }
-    .sys-val { font-weight: 600; color: #333; font-size: 13px; }
+    .sys-label { color: #666; }
+    .sys-val { font-weight: 700; color: #333; }
+    .stage-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .stage-incubation { background: #4CAF50; color: white; }
+    .stage-lockdown { background: #e94560; color: white; }
+    .footer { text-align: center; margin-top: 15px; padding: 10px; color: rgba(255,255,255,0.6); font-size: 11px; }
+    footer a { color: #ffd700; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1><span>🥚</span> Mock Settings</h1>
+    <h1><span>🥚</span> EGGubator</h1>
     <div class="header">
       <a href="/" class="back-link">← Back</a>
-      <div class="mode-group">
-        <span class="mode-text" id="mockText">OFF</span>
+      <span style="color:white;font-weight:600;font-size:13px;" id="stageBadge">INCUBATION</span>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Timing Settings</span>
+      </div>
+      <div class="input-row">
+        <label>Log Interval:</label>
+        <select id="logInterval" onchange="saveLogInterval()">
+          <option value="5000">5 sec</option>
+          <option value="10000">10 sec</option>
+          <option value="15000">15 sec</option>
+          <option value="20000">20 sec</option>
+          <option value="25000">25 sec</option>
+          <option value="30000">30 sec</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label>Save Flash:</label>
+        <select id="saveFlashInterval" onchange="saveFlashInterval()">
+          <option value="3600000">60 min</option>
+          <option value="5400000">90 min</option>
+          <option value="7200000">2 hrs</option>
+          <option value="9000000">150 min</option>
+          <option value="10800000">3 hrs</option>
+          <option value="12600000">210 min</option>
+          <option value="14400000">4 hrs</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <label>Egg Turner:</label>
+        <select id="eggTurnInterval" onchange="saveEggTurnInterval()">
+          <option value="7200000">2 hours</option>
+          <option value="10800000">3 hours</option>
+          <option value="14400000">4 hours</option>
+          <option value="21600000">6 hours</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Simulation</span>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Mock Sensor</span>
         <label class="switch">
           <input type="checkbox" id="mockSwitch" onchange="toggleMock()">
           <span class="slider"></span>
         </label>
       </div>
-      <div class="mode-group">
-        <span class="mode-text" id="autoSimText">AUTO-SIM</span>
+      <div class="toggle-row">
+        <span class="toggle-label">Auto Simulation</span>
         <label class="switch">
           <input type="checkbox" id="autoSimSwitch" onchange="toggleAutoSim()">
           <span class="slider"></span>
         </label>
       </div>
     </div>
-    <div class="card">
-      <span class="label">Mock Values</span>
-      <div class="input-row">
-        <label>Temp:</label>
-        <input type="number" id="mockTemp" value="25" step="0.1" min="20" max="45">
-        <span>°C</span>
+    <div class="card" id="mockValuesCard" style="display:none;">
+      <div class="card-header">
+        <span class="card-title">Mock Values</span>
       </div>
       <div class="input-row">
-        <label>Hum:</label>
-        <input type="number" id="mockHum" value="50" step="0.1" min="0" max="100">
-        <span>%</span>
+        <label>Temperature:</label>
+        <div class="input-wrapper">
+          <input type="number" id="mockTemp" value="25" step="0.1" min="20" max="45">
+          <span>°C</span>
+        </div>
       </div>
-      <button class="btn btn-auto" id="setValuesBtn" onclick="setMockValues()">Set Values</button>
-      <div class="msg" id="mockStatus"></div>
+      <div class="input-row">
+        <label>Humidity:</label>
+        <div class="input-wrapper">
+          <input type="number" id="mockHum" value="50" step="0.1" min="0" max="100">
+          <span>%</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="setValuesBtn" onclick="setMockValues()">Apply Values</button>
     </div>
     <div class="card">
-      <span class="label">Current Status</span>
+      <div class="card-header">
+        <span class="card-title">Current Status</span>
+      </div>
       <div class="status-row"><span>Sensor</span><span class="stat" id="sensorStatus">Real</span></div>
       <div class="status-row"><span>Temperature</span><span class="stat" id="currentTemp">--°C</span></div>
       <div class="status-row"><span>Humidity</span><span class="stat" id="currentHum">--%</span></div>
     </div>
     <div class="card">
-      <span class="label">System Info</span>
-      <div class="sys-row"><span class="sys-label">Free RAM</span><span class="sys-val" id="sysHeap">--</span></div>
+      <div class="card-header">
+        <span class="card-title">System Info</span>
+      </div>
+      <div class="sys-row"><span class="sys-label">RAM</span><span class="sys-val" id="sysHeap">--</span></div>
       <div class="sys-row"><span class="sys-label">CPU</span><span class="sys-val" id="sysCpu">--</span></div>
-      <div class="sys-row"><span class="sys-label">Flash</span><span class="sys-val" id="sysFlash">--</span></div>
-      <div class="sys-row"><span class="sys-label">Log Entries</span><span class="sys-val" id="sysLog">--</span></div>
       <div class="sys-row"><span class="sys-label">Uptime</span><span class="sys-val" id="sysUptime">--</span></div>
     </div>
+    <div class="footer">EGGubator v<span id="version">--</span></div>
   </div>
   <script>
     let userEditing = false;
     function updateData() {
       fetch('/data').then(r => r.json()).then(d => {
-        const mockOn = d.mock;
-        const autoSimOn = d.autosim;
-        document.getElementById('mockText').textContent = mockOn ? 'ON' : 'OFF';
-        document.getElementById('mockText').className = 'mode-text ' + (mockOn ? 'active' : '');
-        document.getElementById('mockSwitch').checked = mockOn;
-        document.getElementById('autoSimText').textContent = autoSimOn ? 'ON' : 'AUTO-SIM';
-        document.getElementById('autoSimText').className = 'mode-text ' + (autoSimOn ? 'active' : '');
-        document.getElementById('autoSimSwitch').checked = autoSimOn;
-        document.getElementById('mockSwitch').disabled = autoSimOn;
-        document.getElementById('autoSimSwitch').disabled = mockOn;
+        document.getElementById('version').textContent = d.version;
         document.getElementById('currentTemp').textContent = d.temperature.toFixed(1)+'°C';
         document.getElementById('currentHum').textContent = d.humidity.toFixed(1)+'%';
+        const mockOn = d.mock;
+        const autoSimOn = d.autosim;
+        document.getElementById('mockSwitch').checked = mockOn;
+        document.getElementById('autoSimSwitch').checked = autoSimOn;
         document.getElementById('sensorStatus').textContent = mockOn ? 'Mock' : (autoSimOn ? 'Auto-Sim' : 'Real');
         document.getElementById('sensorStatus').className = 'stat ' + ((mockOn || autoSimOn) ? 'on' : 'off');
         document.getElementById('setValuesBtn').disabled = !mockOn;
+        document.getElementById('mockValuesCard').style.display = mockOn ? 'block' : 'none';
+        const stage = d.stageLockdown;
+        const badge = document.getElementById('stageBadge');
+        if (stage) {
+          badge.textContent = 'LOCKDOWN';
+          badge.className = 'stage-badge stage-lockdown';
+        } else {
+          badge.textContent = 'INCUBATION';
+          badge.className = 'stage-badge stage-incubation';
+        }
+        document.getElementById('incubationStage').value = stage ? 'lockdown' : 'incubation';
         if (d.sys) {
           const heapFree = d.sys.heapFree || 0;
-          const heapTotal = d.sys.heapTotal || 81920;
-          const flashSize = d.sys.flashSize || 0;
-          const flashTotal = d.sys.flashTotal || 4194304;
-          document.getElementById('sysHeap').textContent = heapFree + ' / ' + heapTotal + ' KB';
+          document.getElementById('sysHeap').textContent = (heapFree/1024).toFixed(0) + ' KB free';
           document.getElementById('sysCpu').textContent = d.sys.cpu + '%';
-          document.getElementById('sysFlash').textContent = (flashSize/1048576).toFixed(1) + ' / ' + (flashTotal/1048576) + ' MB';
-          document.getElementById('sysLog').textContent = d.sys.logCnt + ' / 100';
           document.getElementById('sysUptime').textContent = d.uptime;
         }
       }).catch(e => console.error(e));
@@ -591,29 +682,43 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       fetch('/mock/api').then(r => r.json()).then(d => {
         document.getElementById('mockTemp').value = d.temp;
         document.getElementById('mockHum').value = d.hum;
+        document.getElementById('logInterval').value = d.logInterval;
+        document.getElementById('saveFlashInterval').value = d.saveFlashInterval;
+        document.getElementById('eggTurnInterval').value = d.eggTurnInterval;
       }).catch(e => console.error(e));
     }
-    function onInputFocus() { userEditing = true; }
-    function onInputBlur() { userEditing = false; }
     function toggleMock() {
       const enable = document.getElementById('mockSwitch').checked;
-      fetch('/mock/api?enable=' + (enable ? '1' : '0')).then(r => r.text()).then(() => { userEditing = false; updateData(); loadMockValues(); }).catch(e => console.error(e));
+      const mockValuesCard = document.getElementById('mockValuesCard');
+      mockValuesCard.style.display = enable ? 'block' : 'none';
+      fetch('/mock/api?enable=' + (enable ? '1' : '0')).then(r => r.text()).then(() => { updateData(); loadMockValues(); }).catch(e => console.error(e));
     }
     function toggleAutoSim() {
       const enable = document.getElementById('autoSimSwitch').checked;
       fetch('/mock/api?autosim=' + (enable ? '1' : '0')).then(r => r.text()).then(() => { updateData(); }).catch(e => console.error(e));
     }
+    function saveLogInterval() {
+      const val = document.getElementById('logInterval').value;
+      fetch('/mock/api?logInterval=' + val).then(r => r.text()).then(msg => console.log(msg)).catch(e => console.error(e));
+    }
+    function saveFlashInterval() {
+      const val = document.getElementById('saveFlashInterval').value;
+      fetch('/mock/api?saveFlashInterval=' + val).then(r => r.text()).then(msg => console.log(msg)).catch(e => console.error(e));
+    }
+    function saveEggTurnInterval() {
+      const val = document.getElementById('eggTurnInterval').value;
+      fetch('/mock/api?eggTurnInterval=' + val).then(r => r.text()).then(msg => console.log(msg)).catch(e => console.error(e));
+    }
+    function saveIncubationStage() {
+      const stage = document.getElementById('incubationStage').value;
+      fetch('/mock/api?stageType=' + stage).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
+    }
     function setMockValues() {
       const t = document.getElementById('mockTemp').value;
       const h = document.getElementById('mockHum').value;
-      if (t < 20 || t > 45 || h < 0 || h > 100) { document.getElementById('mockStatus').textContent = 'Invalid: Temp 20-45°C, Hum 0-100%'; return; }
-      fetch('/mock/api?temp=' + t + '&hum=' + h).then(r => r.text()).then(msg => { document.getElementById('mockStatus').textContent = msg; updateData(); }).catch(e => console.error(e));
+      fetch('/mock/api?temp=' + t + '&hum=' + h).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
     }
-    document.getElementById('mockTemp').addEventListener('focus', onInputFocus);
-    document.getElementById('mockHum').addEventListener('focus', onInputFocus);
-    document.getElementById('mockTemp').addEventListener('blur', onInputBlur);
-    document.getElementById('mockHum').addEventListener('blur', onInputBlur);
-    setInterval(updateData, 2000);
+    setInterval(updateData, 3000);
     loadMockValues();
     updateData();
   </script>
@@ -652,16 +757,19 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"uptime\":\"" + uptimeStr + "\"" +
                 ",\"mock\":" + String(useMockSensor ? "true" : "false") +
                  ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
+                ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
                 ",\"heaterMode\":" + String(heaterMode) +
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
+                ",\"logCnt\":" + String(logIndex) +
+                ",\"logStorage\":" + String((logIndex * sizeof(LogEntry)) / 1024) +
                 ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"heapTotal\":81920" +
                 ",\"cpu\":" + String(cpuUtil) +
                 ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
                 ",\"flashTotal\":4194304" +
-                ",\"logCnt\":" + String(logIndex) + "}";
+                "}";
   getLogDataForWeb(json);
   json += "}";
   server.send(200, "application/json", json);
@@ -746,13 +854,39 @@ void handleMockSensor() {
     setMockSensor(true);
     setMockValues(t, h);
     server.send(200, "text/plain", "Mock values set: " + String(t) + "C, " + String(h) + "%");
+  } else if (server.hasArg("logInterval")) {
+    unsigned long val = server.arg("logInterval").toInt();
+    LOG_INTERVAL = val;
+    server.send(200, "text/plain", "Log interval set to " + String(val/1000) + "s");
+  } else if (server.hasArg("saveFlashInterval")) {
+    unsigned long val = server.arg("saveFlashInterval").toInt();
+    SAVE_FLASH_INTERVAL = val;
+    server.send(200, "text/plain", "Save to Flash interval set to " + String(val/60000) + "min");
+  } else if (server.hasArg("eggTurnInterval")) {
+    unsigned long val = server.arg("eggTurnInterval").toInt();
+    EGG_TURN_INTERVAL = val;
+    server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
+  } else if (server.hasArg("stageType")) {
+    String type = server.arg("stageType");
+    if (type == "lockdown") {
+      stageLockdown = true;
+      TARGET_TEMP = 375;
+      TARGET_HUMIDITY = 650;
+    } else if (type == "incubation") {
+      stageLockdown = false;
+      TARGET_TEMP = 375;
+      TARGET_HUMIDITY = 550;
+    }
+    server.send(200, "text/plain", "Stage set to " + type);
   } else {
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
                   ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                   ",\"temp\":" + String(mockTemp) + 
                   ",\"hum\":" + String(mockHum) +
-                  ",\"simTemp\":" + String(simTemp) +
-                  ",\"simHum\":" + String(simHum) + "}";
+                  ",\"logInterval\":" + String(LOG_INTERVAL) +
+                  ",\"saveFlashInterval\":" + String(SAVE_FLASH_INTERVAL) +
+                  ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
+                  ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
     server.send(200, "application/json", json);
   }
 }
@@ -856,6 +990,14 @@ void rotateEggs() {
   static unsigned long turnStartTime = 0;
   static int currentAngle = 0;
   static bool direction = true;
+  
+  // Disable egg turner during lockdown stage
+  if (stageLockdown) {
+    servoEnabled = false;
+    servoPosition = 0;
+    eggServo.write(SERVO_CENTER);
+    return;
+  }
   
   if (servoEnabled && servoMode == AUTO && !turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
     turning = true;

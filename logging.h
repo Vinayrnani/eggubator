@@ -1,112 +1,39 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
+#include <Arduino.h>
 #include <EEPROM.h>
 
 struct LogEntry {
-  unsigned long timestamp;
-  float temperature;
-  float humidity;
-  bool heaterState;
-  bool atomizerState;
-  bool fanState;
-  int servoPosition;
+  uint32_t timestamp;
+  uint16_t temp;    // temperature × 10 (0-6553.5°C)
+  uint16_t hum;     // humidity × 10 (0-6553.5%)
+  uint8_t states;   // bit 0: heater, bit 1: atomizer, bit 2: fan, bit 3: servo
+  uint8_t servoPos; // servo position (0-180)
 };
 
-#define MAX_LOG_ENTRIES 100
+#define MAX_LOG_ENTRIES 500
+#define LOG_SECTOR_COUNT 256
+#define SECTOR_SIZE 4096
+#define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
 
-// EEPROM addresses
-#define EEPROM_MAGIC 0
-#define EEPROM_INDEX 1
-#define EEPROM_CHECK 2
-#define MAGIC_VAL 0x42
-#define CHECK_VAL 0xAB
+#define STATE_HEATER    0x01
+#define STATE_ATOMIZER  0x02
+#define STATE_FAN       0x04
+#define STATE_SERVO     0x08
 
 extern LogEntry logBuffer[MAX_LOG_ENTRIES];
 extern int logIndex;
 extern bool logFull;
 extern unsigned long lastLogTime;
+extern unsigned long lastSaveFlashTime;
 
-void initLogging() {
-  EEPROM.begin(512);
-  
-  unsigned char magic = EEPROM.read(EEPROM_MAGIC);
-  unsigned char check = EEPROM.read(EEPROM_CHECK);
-  unsigned char savedIndex = EEPROM.read(EEPROM_INDEX);
-  
-  if (magic == MAGIC_VAL && check == CHECK_VAL && savedIndex <= MAX_LOG_ENTRIES) {
-    logIndex = savedIndex;
-    logFull = (logIndex >= MAX_LOG_ENTRIES);
-    Serial.println("Restored log data from EEPROM");
-  } else {
-    logIndex = 0;
-    logFull = false;
-    Serial.println("Starting fresh log");
-  }
-  
-  Serial.print("Log entries: ");
-  Serial.println(logIndex);
-}
-
-void saveCheckpoint() {
-  EEPROM.write(EEPROM_MAGIC, MAGIC_VAL);
-  EEPROM.write(EEPROM_INDEX, (unsigned char)logIndex);
-  EEPROM.write(EEPROM_CHECK, CHECK_VAL);
-  EEPROM.commit();
-}
-
-void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo) {
-  if (logIndex < MAX_LOG_ENTRIES) {
-    logBuffer[logIndex].timestamp = millis();
-    logBuffer[logIndex].temperature = temp;
-    logBuffer[logIndex].humidity = hum;
-    logBuffer[logIndex].heaterState = heater;
-    logBuffer[logIndex].atomizerState = atomizer;
-    logBuffer[logIndex].fanState = fan;
-    logBuffer[logIndex].servoPosition = servo;
-    logIndex++;
-    if (logIndex >= MAX_LOG_ENTRIES) {
-      logIndex = 0;
-      logFull = true;
-    }
-  } else {
-    logIndex = 0;
-    logFull = true;
-    logBuffer[logIndex].timestamp = millis();
-    logBuffer[logIndex].temperature = temp;
-    logBuffer[logIndex].humidity = hum;
-    logBuffer[logIndex].heaterState = heater;
-    logBuffer[logIndex].atomizerState = atomizer;
-    logBuffer[logIndex].fanState = fan;
-    logBuffer[logIndex].servoPosition = servo;
-    logIndex++;
-  }
-  
-  saveCheckpoint();
-}
-
-void getLogDataForWeb(String& json) {
-  int startIdx = logFull ? logIndex : 0;
-  int count = logFull ? MAX_LOG_ENTRIES : logIndex;
-  int entriesToShow = count;
-  
-  if (entriesToShow > 0) {
-    json += ",\"log\":[";
-    for (int i = 0; i < entriesToShow; i++) {
-      int idx = (startIdx + i) % MAX_LOG_ENTRIES;
-      json += "{\"t\":" + String(logBuffer[idx].timestamp) +
-             ",\"temp\":" + String(logBuffer[idx].temperature, 1) +
-             ",\"hum\":" + String(logBuffer[idx].humidity, 1) +
-             ",\"h\":" + String(logBuffer[idx].heaterState ? "true" : "false") +
-             ",\"a\":" + String(logBuffer[idx].atomizerState ? "true" : "false") +
-             ",\"f\":" + String(logBuffer[idx].fanState ? "true" : "false") +
-             ",\"s\":" + String(logBuffer[idx].servoPosition ? "true" : "false") + "}";
-      if (i < entriesToShow - 1) json += ",";
-    }
-    json += "]";
-  } else {
-    json += ",\"log\":[]";
-  }
-}
+void initLogging();
+void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
+void getLogDataForWeb(String& json);
+void getLogsFromFlash(String& json);
+bool shouldSaveToFlash();
+void saveLogsToFlash();
+void clearLogs();
 
 #endif
