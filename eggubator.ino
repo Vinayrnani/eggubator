@@ -32,10 +32,11 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 unsigned long LOG_INTERVAL = 10000;
 unsigned long SAVE_FLASH_INTERVAL = 7200000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
+unsigned long PULSE_ON_TIME = 2000;  // Atomizer pulse ON time (2 sec default)
 
 // Target temperature and humidity (can be changed via web/stage selection)
-unsigned long TARGET_TEMP = 375;    // Default 37.5°C
-unsigned long TARGET_HUMIDITY = 600; // Default 60.0%
+float TARGET_TEMP = 37.5;    // Default 37.5°C
+float TARGET_HUMIDITY = 60.0; // Default 60.0%
 
 // Global variables
 float currentTemp = 0;
@@ -205,7 +206,7 @@ input:checked + .slider:before { transform: translateX(26px); }
       <div class="device-grid" id="deviceGrid"></div>
     </div>
     <div class="card">
-      <div class="target-info" id="targets">Target: 37.5°C | 60%</div>
+      <div class="target-info" id="targets">Target: --°C | --%</div>
     </div>
     <div class="card">
       <button class="btn btn-auto" onclick="checkOta()">Check Update</button>
@@ -274,6 +275,7 @@ input:checked + .slider:before { transform: translateX(26px); }
           modeText.className = 'mode-text ' + (mode === 0 ? 'killed' : 'auto');
           modeSwitch.checked = (mode === 0);
         });
+        if (d.targetTemp) document.getElementById('targets').textContent = 'Target: ' + d.targetTemp.toFixed(1) + 'C | ' + d.targetHumidity.toFixed(0) + '%';
         if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
       }).catch(e => console.error('Data fetch error:', e));
     }
@@ -579,8 +581,20 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         </select>
       </div>
       <div class="input-row">
+        <label>Atomizer:</label>
+        <select id="atomizerPulse" onchange="saveAtomizerPulse()">
+          <option value="2000">2 sec</option>
+          <option value="3000">3 sec</option>
+          <option value="4000">4 sec</option>
+          <option value="5000">5 sec</option>
+        </select>
+      </div>
+      <div class="input-row">
         <label>Egg Turner:</label>
         <select id="eggTurnInterval" onchange="saveEggTurnInterval()">
+          <option value="900000">15 min</option>
+          <option value="1800000">30 min</option>
+          <option value="3600000">1 hour</option>
           <option value="7200000">2 hours</option>
           <option value="10800000">3 hours</option>
           <option value="14400000">4 hours</option>
@@ -642,6 +656,8 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-row"><span class="sys-label">RAM</span><span class="sys-val" id="sysHeap">--</span></div>
       <div class="sys-row"><span class="sys-label">CPU</span><span class="sys-val" id="sysCpu">--</span></div>
       <div class="sys-row"><span class="sys-label">Uptime</span><span class="sys-val" id="sysUptime">--</span></div>
+      <div class="sys-row"><span class="sys-label">Log Records</span><span class="sys-val" id="sysLogCnt">--</span></div>
+      <div class="sys-row"><span class="sys-label">Log Storage</span><span class="sys-val" id="sysLogStorage">--</span></div>
     </div>
     <div class="footer">EGGubator v<span id="version">--</span></div>
   </div>
@@ -670,13 +686,25 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
           badge.className = 'stage-badge stage-incubation';
         }
         document.getElementById('incubationStage').value = stage ? 'lockdown' : 'incubation';
-        if (d.sys) {
-          const heapFree = d.sys.heapFree || 0;
-          document.getElementById('sysHeap').textContent = (heapFree/1024).toFixed(0) + ' KB free';
-          document.getElementById('sysCpu').textContent = d.sys.cpu + '%';
-          document.getElementById('sysUptime').textContent = d.uptime;
+        
+        // System info - show always
+        if (d.sys && d.sys.heapFree) {
+          document.getElementById('sysHeap').textContent = (d.sys.heapFree/1024).toFixed(0) + ' KB free';
+        } else {
+          document.getElementById('sysHeap').textContent = '--';
         }
-      }).catch(e => console.error(e));
+        
+        if (d.sys && d.sys.cpu) {
+          document.getElementById('sysCpu').textContent = d.sys.cpu + '%';
+        } else {
+          document.getElementById('sysCpu').textContent = '--';
+        }
+        
+        document.getElementById('sysUptime').textContent = d.uptime || '--';
+        document.getElementById('sysLogCnt').textContent = (d.logCnt || 0) + ' records';
+        document.getElementById('sysLogStorage').textContent = (d.logStorage || 0) + ' KB';
+        
+      });
     }
     function loadMockValues() {
       fetch('/mock/api').then(r => r.json()).then(d => {
@@ -708,6 +736,10 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     function saveEggTurnInterval() {
       const val = document.getElementById('eggTurnInterval').value;
       fetch('/mock/api?eggTurnInterval=' + val).then(r => r.text()).then(msg => console.log(msg)).catch(e => console.error(e));
+    }
+    function saveAtomizerPulse() {
+      const val = document.getElementById('atomizerPulse').value;
+      fetch('/mock/api?pulseOnTime=' + val).then(r => r.text()).then(msg => console.log(msg)).catch(e => console.error(e));
     }
     function saveIncubationStage() {
       const stage = document.getElementById('incubationStage').value;
@@ -762,6 +794,8 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
+                ",\"targetTemp\":" + String(TARGET_TEMP) +
+                ",\"targetHumidity\":" + String(TARGET_HUMIDITY) +
                 ",\"logCnt\":" + String(logIndex) +
                 ",\"logStorage\":" + String((logIndex * sizeof(LogEntry)) / 1024) +
                 ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
@@ -866,16 +900,20 @@ void handleMockSensor() {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
+  } else if (server.hasArg("pulseOnTime")) {
+    unsigned long val = server.arg("pulseOnTime").toInt();
+    PULSE_ON_TIME = val;
+    server.send(200, "text/plain", "Atomizer pulse set to " + String(val/1000) + "s");
   } else if (server.hasArg("stageType")) {
     String type = server.arg("stageType");
     if (type == "lockdown") {
       stageLockdown = true;
-      TARGET_TEMP = 375;
-      TARGET_HUMIDITY = 650;
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 65.0;
     } else if (type == "incubation") {
       stageLockdown = false;
-      TARGET_TEMP = 375;
-      TARGET_HUMIDITY = 550;
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 55.0;
     }
     server.send(200, "text/plain", "Stage set to " + type);
   } else {

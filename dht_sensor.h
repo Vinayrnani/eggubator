@@ -24,7 +24,7 @@ const float SIM_TARGET_TEMP = 39.0;
 const float SIM_TARGET_HUM = 70.0;
 const float SIM_FAN_COOL = 0.3;
 const float SIM_SPEED_RISE = 0.08;
-const float SIM_SPEED_DROP = 0.015;
+const float SIM_SPEED_DROP = 0.008;
 const float SIM_NOISE_TEMP = 0.1;
 const float SIM_NOISE_HUM = 1.0;
 
@@ -83,14 +83,17 @@ void setAutoSim(bool enable) {
   }
 }
 
+extern float TARGET_TEMP;
+extern float TARGET_HUMIDITY;
+
 void updateAutoSim(bool heaterOn, bool atomizerOn, bool fanOn) {
   if (!autoSimMode) return;
   
-  float targetT = heaterOn ? SIM_TARGET_TEMP : SIM_AMBIENT_TEMP;
-  float targetH = atomizerOn ? SIM_TARGET_HUM : SIM_AMBIENT_HUM;
+  float targetT = heaterOn ? TARGET_TEMP : SIM_AMBIENT_TEMP;
+  float targetH = atomizerOn ? TARGET_HUMIDITY : SIM_AMBIENT_HUM;
   float fanCool = fanOn ? SIM_FAN_COOL : 0.0;
-  float speedT = (heaterOn || simTemp < targetT) ? SIM_SPEED_RISE : SIM_SPEED_DROP;
-  float speedH = (atomizerOn || simHum < targetH) ? SIM_SPEED_RISE : SIM_SPEED_DROP;
+  float speedT = heaterOn ? SIM_SPEED_RISE : SIM_SPEED_DROP;
+  float speedH = atomizerOn ? SIM_SPEED_RISE : SIM_SPEED_DROP;
   
   simTemp += (targetT - simTemp - fanCool) * speedT;
   simHum += (targetH - simHum) * speedH;

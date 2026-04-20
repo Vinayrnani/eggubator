@@ -1,0 +1,75 @@
+# Egg Incubator - Chat Log
+
+## Session: 2026-04-16
+
+### User: The code seems to be okay but the compiled binary is not working on esp device however the same code compiled in adruino droid is working
+
+**Analysis:**
+- Code compiles fine in Arduino CLI
+- Binary not booting on ESP device
+- Same code works in ArduinoDroid
+
+**Root Cause:** Arduino CLI produces raw application binary without bootloader. Flash via esptool directly needs additional parameters.
+
+**Solution:** Use Arduino CLI upload command or ensure proper flash parameters when using esptool.
+
+---
+
+### User: Not booting at all
+
+**Diagnosis:** Missing bootloader in standalone .bin file
+
+**Solution Options:**
+1. Use `arduino-cli upload` (handles bootloader automatically)
+2. Merge bootloader with app binary manually
+
+---
+
+### User: It is difficult to find the connected board as the environment is termux and inside the proot ubuntu.. so will flash the binary via usb once in adruino droid app but make sure it should be compatible
+
+**Action:** Compiled for NodeMCU 0.9 (ESP-12 Module) with correct flash settings (QIO, 40MHz)
+
+---
+
+### User: The page is still showing as \u00b0C
+
+**Issue:** Unicode escape not rendering correctly in HTML
+
+**Fix:** Changed `\u00b0` to literal `°` in both places in eggubator.ino
+
+---
+
+### User: It is doing like this 37.5Â°C
+
+**Issue:** Character encoding issue - degree symbol not being sent as UTF-8
+
+**Fix:** Added `charset=utf-8` to content-type header:
+```cpp
+server.send(200, "text/html; charset=utf-8", INDEX_HTML);
+```
+
+---
+
+### User: PPP
+
+**Action:**
+- Updated AGENT.md with correct commands and paths
+- Committed all changes (modular code structure, Arduino CLI build)
+- Pushed to https://github.com/Vinayrnani/eggubator.git
+
+---
+
+### User: UUU
+
+**Action:** Created this chat.log file to document the session
+
+---
+
+## Summary
+
+Fixed issues:
+1. Binary not booting - compiled for correct board (NodeMCU 0.9)
+2. Unicode display - changed `\u00b0` to `°` and added UTF-8 charset
+3. Updated AGENT.md with correct commands
+4. Pushed to gitKill switch implementation - per device OFF/AUTO mode with improved UI
+Kill switch implementation - per device OFF/AUTO mode with improved UI

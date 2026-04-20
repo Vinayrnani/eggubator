@@ -6,8 +6,8 @@
 #define WIFI_PASSWORD "dishoom1234"
 
 // Target Values
-extern unsigned long TARGET_TEMP;     // ×10 precision
-extern unsigned long TARGET_HUMIDITY; // ×10 precision
+extern float TARGET_TEMP;
+extern float TARGET_HUMIDITY;
 #define TEMP_HYSTERESIS 0.5
 #define HUMIDITY_HYSTERESIS 5.0
 #define MAX_SAFE_TEMP 38.0
@@ -20,7 +20,7 @@ extern unsigned long TARGET_HUMIDITY; // ×10 precision
 #define SERVO_PIN D5
 
 // Timing Constants
-#define PULSE_ON_TIME 3000
+extern unsigned long PULSE_ON_TIME;
 #define PULSE_OFF_TIME 10000
 #define FAN_EXTEND_TIME 5000
 extern unsigned long LOG_INTERVAL;
