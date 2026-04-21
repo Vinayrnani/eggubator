@@ -37,5 +37,7 @@ void saveLogsToFlash();
 void clearLogs();
 void loadSettings();
 void saveSettings();
+uint32_t byteRead(int addr);
+void byteWrite(int addr, uint32_t val);
 
 #endif

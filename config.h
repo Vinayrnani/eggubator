@@ -34,12 +34,13 @@ extern unsigned long EGG_TURN_INTERVAL;
 #define MAX_LOG_ENTRIES 500          // RAM capacity (~4KB)
 #define LOG_SECTOR_COUNT 256         // 1MB = 256 sectors for 15 days
 
-// EEPROM Addresses for Settings (30-46)
-#define EEPROM_LOG_INTERVAL 30
-#define EEPROM_SAVE_FLASH 34
-#define EEPROM_EGG_TURN 38
-#define EEPROM_PULSE_ON 42
-#define EEPROM_STAGE 46
+// EEPROM Addresses for Settings
+#define EEPROM_SETTINGS_MAGIC 30
+#define EEPROM_LOG_INTERVAL 31
+#define EEPROM_SAVE_FLASH 35
+#define EEPROM_EGG_TURN 39
+#define EEPROM_PULSE_ON 43
+#define EEPROM_STAGE 47
 
 void saveSettings();
 void loadSettings();

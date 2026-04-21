@@ -1139,8 +1139,8 @@ void setup() {
   eggServo.attach(SERVO_PIN);
 
   initLogging();
-  loadSettings();
   initRecovery();
+  loadSettings();
   connectWiFi();
   markBootSuccess();
 
