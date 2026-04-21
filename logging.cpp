@@ -10,7 +10,7 @@ bool logFull = false;
 unsigned long lastLogTime = 0;
 unsigned long lastSaveFlashTime = 0;
 
-static int currentSector = 0;
+int currentSector = 0;
 
 #define EEPROM_SECTOR_ADDR 20
 #define FLASH_BASE_ADDR 0x100000
@@ -82,6 +82,50 @@ void getLogDataForWeb(String& json) {
   } else {
     json += ",\"log\":[]";
   }
+}
+
+void getFlashLogDataForWeb(int sector, String& json) {
+  if (sector < 0 || sector >= LOG_SECTOR_COUNT) {
+    json += "[]";
+    return;
+  }
+  
+  uint32_t flashAddr = FLASH_BASE_ADDR + (sector * SECTOR_SIZE);
+  int entries = SECTOR_SIZE / sizeof(LogEntry);
+  
+  LogEntry* tempBuf = new LogEntry[entries];
+  if (!tempBuf) {
+    json += "[]";
+    return;
+  }
+  
+  ESP.flashRead(flashAddr, (uint32_t*)tempBuf, entries * sizeof(LogEntry));
+  
+  json += "[";
+  bool first = true;
+  for (int i = 0; i < entries; i++) {
+    if (tempBuf[i].timestamp == 0xFFFFFFFF) break; // unwritten flash
+    
+    float tempVal = tempBuf[i].temp / 10.0;
+    float humVal = tempBuf[i].hum / 10.0;
+    bool h = tempBuf[i].states & STATE_HEATER;
+    bool a = tempBuf[i].states & STATE_ATOMIZER;
+    bool f = tempBuf[i].states & STATE_FAN;
+    bool s = tempBuf[i].states & STATE_SERVO;
+    
+    if (!first) json += ",";
+    json += "{\"t\":" + String(tempBuf[i].timestamp) +
+           ",\"temp\":" + String(tempVal, 1) +
+           ",\"hum\":" + String(humVal, 1) +
+           ",\"h\":" + String(h ? "true" : "false") +
+           ",\"a\":" + String(a ? "true" : "false") +
+           ",\"f\":" + String(f ? "true" : "false") +
+           ",\"s\":" + String(s ? "true" : "false") + "}";
+    first = false;
+  }
+  json += "]";
+  
+  delete[] tempBuf;
 }
 
 bool shouldSaveToFlash() {

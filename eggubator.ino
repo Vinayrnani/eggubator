@@ -39,6 +39,7 @@ float TARGET_TEMP = 37.5;    // Default 37.5°C
 float TARGET_HUMIDITY = 60.0; // Default 60.0%
 
 // Global variables
+uint32_t bootId = 0;
 float currentTemp = 0;
 float currentHumidity = 0;
 bool heaterState = false;
@@ -195,6 +196,7 @@ input:checked + .slider:before { transform: translateX(26px); }
         </select>
       </div>
       <div class="egg-turner-status" id="eggTurnerStatus"></div>
+      <div class="alert" id="syncStatus" style="display:none; text-align:center; background:#2196F3;">Syncing logs...</div>
     <div class="alert" id="alertBox"></div>
     <div class="card">
       <div class="info-grid">
@@ -230,7 +232,13 @@ input:checked + .slider:before { transform: translateX(26px); }
     </div>
     <div class="version">v<span id="version">--</span></div>
   </div>
+  <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
   <script>
+    const db = new Dexie("EggubatorDB");
+    db.version(1).stores({
+      logs: '[bootId+t], timestamp'
+    });
+
     const devices = [
       { id: 'heater', name: 'Heater' },
       { id: 'atomizer', name: 'Atomizer' },
@@ -276,9 +284,114 @@ input:checked + .slider:before { transform: translateX(26px); }
           modeSwitch.checked = (mode === 0);
         });
         if (d.targetTemp) document.getElementById('targets').textContent = 'Target: ' + d.targetTemp.toFixed(1) + 'C | ' + d.targetHumidity.toFixed(0) + '%';
-        if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
+        
+        let absBaseTime = Date.now() - (d.uptime_ms || 0);
+        
+        if (d.log && d.log.length > 0) {
+          let ramRecords = d.log.map(p => ({
+            bootId: d.bootId || 0,
+            t: p.t,
+            timestamp: absBaseTime + p.t,
+            temp: p.temp,
+            hum: p.hum,
+            h: p.h === true || p.h === "true",
+            a: p.a === true || p.a === "true",
+            f: p.f === true || p.f === "true",
+            s: p.s === true || p.s === "true"
+          }));
+          db.logs.bulkPut(ramRecords).catch(e => console.error(e));
+        }
+        
+        if (d.bootId !== undefined && d.currentSector !== undefined) {
+          syncLogs(d.bootId, d.currentSector, absBaseTime);
+          cleanupOldLogs();
+        }
+        
+        db.logs.orderBy('timestamp').toArray().then(logs => {
+          if (logs.length > 0) {
+            drawTempChart(logs);
+            drawHumChart(logs);
+            drawCtrlChart(logs);
+          }
+        });
+
       }).catch(e => console.error('Data fetch error:', e));
     }
+
+    let isSyncing = false;
+    let syncQueue = [];
+
+    async function cleanupOldLogs() {
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
+      try {
+        await db.logs.where('timestamp').below(thirtyDaysAgo).delete();
+      } catch (e) { console.error('Cleanup error:', e); }
+    }
+
+    async function syncLogs(bootId, currentSector, absBaseTime) {
+      if (isSyncing) return;
+      
+      let lastSynced = localStorage.getItem('lastSyncedSector');
+      if (lastSynced === null) {
+        lastSynced = currentSector; // Start by fetching everything before currentSector
+      } else {
+        lastSynced = parseInt(lastSynced);
+      }
+      
+      let s = (lastSynced + 1) % 256;
+      while (s !== currentSector) {
+        syncQueue.push(s);
+        s = (s + 1) % 256;
+      }
+
+      if (syncQueue.length === 0) return;
+
+      isSyncing = true;
+      const syncStatus = document.getElementById('syncStatus');
+      syncStatus.style.display = 'block';
+      syncStatus.className = 'alert show';
+
+      while (syncQueue.length > 0) {
+        let sectorToSync = syncQueue.shift();
+        syncStatus.textContent = 'Syncing... (' + syncQueue.length + ' chunks left)';
+        
+        try {
+          let res = await fetch('/data?sector=' + sectorToSync);
+          let data = await res.json();
+          if (data && data.length > 0) {
+            let records = data.map(p => ({
+              bootId: bootId,
+              t: p.t,
+              timestamp: absBaseTime + p.t,
+              temp: p.temp,
+              hum: p.hum,
+              h: p.h === true || p.h === "true",
+              a: p.a === true || p.a === "true",
+              f: p.f === true || p.f === "true",
+              s: p.s === true || p.s === "true"
+            }));
+            await db.logs.bulkPut(records);
+          }
+          localStorage.setItem('lastSyncedSector', sectorToSync);
+        } catch (e) {
+          console.error('Sync error for sector', sectorToSync, e);
+          syncQueue.unshift(sectorToSync);
+          break;
+        }
+      }
+
+      isSyncing = false;
+      syncStatus.style.display = 'none';
+      
+      db.logs.orderBy('timestamp').toArray().then(logs => {
+        if (logs.length > 0) {
+          drawTempChart(logs);
+          drawHumChart(logs);
+          drawCtrlChart(logs);
+        }
+      });
+    }
+
     // Fix: Call updateData on load and as failsafe after 2s
     updateData();
     setTimeout(function() {
@@ -563,6 +676,13 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         <span class="card-title">Timing Settings</span>
       </div>
       <div class="input-row">
+        <label>Stage:</label>
+        <select id="incubationStage" onchange="saveIncubationStage()">
+          <option value="incubation">Incubation (Days 1-18)</option>
+          <option value="lockdown">Lockdown (Days 19-21)</option>
+        </select>
+      </div>
+      <div class="input-row">
         <label>Log Interval:</label>
         <select id="logInterval" onchange="saveLogInterval()">
           <option value="5000">5 sec</option>
@@ -775,6 +895,14 @@ void handleMockPage() {
 }
 
 void handleData() {
+  if (server.hasArg("sector")) {
+    int s = server.arg("sector").toInt();
+    String json = "";
+    getFlashLogDataForWeb(s, json);
+    server.send(200, "application/json", json);
+    return;
+  }
+
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
   int hours = (uptimeSec % 86400) / 3600;
@@ -803,6 +931,9 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"targetHumidity\":" + String(TARGET_HUMIDITY) +
                 ",\"logCnt\":" + String(logIndex) +
                 ",\"logStorage\":" + String((logIndex * sizeof(LogEntry)) / 1024) +
+                ",\"bootId\":" + String(bootId) +
+                ",\"uptime_ms\":" + String(millis()) +
+                ",\"currentSector\":" + String(currentSector) +
                 ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"heapTotal\":81920" +
                 ",\"cpu\":" + String(cpuUtil) +
@@ -1127,6 +1258,9 @@ void handleRecoveryReset() {
 // ============================================
 void setup() {
   Serial.begin(115200);
+  
+  randomSeed(analogRead(0) ^ micros());
+  bootId = random(1, 1000000);
   
   pinMode(RELAY_HEATER, OUTPUT);
   pinMode(RELAY_ATOMIZER, OUTPUT);
