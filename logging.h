@@ -16,6 +16,7 @@ struct LogEntry {
 #define LOG_SECTOR_COUNT 256
 #define SECTOR_SIZE 4096
 #define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
+#define SECTOR_THRESHOLD 390
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
@@ -31,7 +32,6 @@ extern unsigned long lastSaveFlashTime;
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
 void getLogDataForWeb(String& json);
-void getLogsFromFlash(String& json);
 bool shouldSaveToFlash();
 void saveLogsToFlash();
 void clearLogs();

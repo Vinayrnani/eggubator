@@ -1,6 +1,6 @@
 # Egg Incubator Controller
 
-An ESP8266-based automatic egg incubator controller with web interface, temperature/humidity control, and OTA updates.
+An ESP8266-based automatic egg incubator controller with web interface, temperature/humidity control, mock sensor testing, and OTA updates.
 
 ## Hardware Setup
 
@@ -26,13 +26,13 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 ## Features
 
 ### Temperature Control
-- Target: 37.5°C (±0.5°C hysteresis)
+- Target: **37.5°C** (±0.5°C hysteresis)
 - Automatic heater on/off
 - Overheat protection: fan ON when temp > 38°C
 
 ### Humidity Control (Pulsating Mode)
-- Target: 60% RH
-- **3 seconds ON → 10 seconds OFF** cycle
+- Target: **55% RH** (incubation), **65% RH** (lockdown)
+- **2 seconds ON → 10 seconds OFF** cycle (configurable)
 - Repeats until target humidity reached
 - When humidity is high (> target + 5%), atomizer stays OFF
 
@@ -44,24 +44,47 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 - OFF only when **both temperature AND humidity are stable**
 - ON when temperature > 38°C (overheat protection)
 
+### Egg Turner
+- Rotates eggs every **2 hours** (configurable: 15min - 6 hours)
+- 10-second sweep animation
+- **Automatically disabled during lockdown stage**
+
+### Incubation Stages
+| Stage | Days | Temp | Humidity |
+|-------|------|------|---------|
+| Incubation | 1-18 | 37.5°C | 55% |
+| Lockdown | 19-21 | 37.5°C | 65% |
+
 ### Data Logging
-- Logs to **EEPROM** (persists across power cycles)
-- Stores last **100 entries** with timestamp, temp, humidity, device states
+- Logs to **RAM** (500 entries circular buffer)
+- Stores timestamp, temp, humidity, device states
 - Auto-purges oldest when full
+- Periodic save to flash (configurable)
 
 ### Web Interface
 - Live temperature & humidity display
-- Device controls (manual ON/OFF)
-- **Temperature & humidity charts** (last 20 readings)
+- **Per-device control** (each device: OFF/AUTO toggle)
+- Temperature & humidity charts
+- **Controls state chart** (heater, atomizer, fan, servo)
 - **Uptime display**
+- **Incubation stage selector**
 - OTA firmware update
+- Settings page for timing/mock configuration
+
+### Mock Sensor & Auto-Simulation
+- **Mock Sensor Mode**: Set manual temp/hum values for testing
+- **Auto Simulation**: Physics-based simulation with:
+  - Ambient temp: 32°C, Ambient humidity: 35%
+  - Target-following when devices ON
+  - Fan cooling effect
+  - Noise injection (±0.1°C temp, ±1% humidity)
 
 ### Recovery System
 - Tracks boot failures in EEPROM
 - Auto-enters recovery mode after **3 consecutive failures**
 - Web endpoints for manual recovery:
   - `/reboot` - Reboot device
-  - `/rollback` - Reset boot counter
+  - `/rollback` - Trigger rollback
   - `/recovery` - Enter recovery mode
   - `/recovery/reset` - Exit recovery mode
 
@@ -75,13 +98,15 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 
 | Endpoint | Description |
 |----------|-------------|
-| `/` | Main web interface |
+| `/` | Main dashboard |
+| `/mock` | Settings & mock configuration |
 | `/data` | JSON sensor data with logs |
-| `/control?device=X&state=Y` | Control devices (heater/atomizer/fan/servo) |
+| `/control?device=X&mode=Y` | Control device (heater/atomizer/fan/servo: off/auto) |
+| `/mock/api` | Mock sensor & timing APIs |
 | `/ota/check` | Check for updates |
 | `/ota/update` | Trigger OTA update |
 | `/reboot` | Reboot device |
-| `/rollback` | Reset boot counter |
+| `/rollback` | Trigger rollback |
 | `/recovery` | Enter recovery mode |
 | `/recovery/reset` | Exit recovery mode |
 
@@ -92,7 +117,7 @@ Upload firmware via web interface at `http://<IP>/update`
 
 ### Auto Update
 1. Host `firmware.bin` at your server
-2. Host `version.txt` with version string (e.g., "1.2.2")
+2. Host `version.txt` with version string (e.g., "1.2.3")
 3. Update URLs in `updates.h`:
 ```cpp
 #define FIRMWARE_URL "http://your-server/firmware.bin"
@@ -103,12 +128,13 @@ Upload firmware via web interface at `http://<IP>/update`
 
 ```
 eggubator/
-├── eggubator.ino       # Main sketch (~16KB)
+├── eggubator.ino       # Main sketch (~33KB)
 ├── config.h            # Configuration constants
-├── dht_sensor.h       # DHT22 sensor functions (no library needed)
+├── dht_sensor.h       # DHT22 sensor with mock/simulation
 ├── wifi_manager.h     # WiFi connection with static IP
-├── logging.h          # EEPROM data logging
+├── logging.h          # RAM/flash data logging
 ├── updates.h          # OTA update & recovery functions
+├── web_ui.h          # Settings page HTML
 └── firmware.bin       # Compiled firmware (~330KB)
 ```
 
@@ -116,23 +142,20 @@ eggubator/
 
 The project is modularized for maintainability:
 
-- **config.h** - All constants (pins, targets, timing)
-- **dht_sensor.h** - DHT22 reading without external library
-- **wifi_manager.h** - WiFi connection with auto IP configuration
-- **logging.h** - EEPROM persistence for data logging
-- **updates.h** - OTA updates and boot recovery system
+- **config.h** - Pins, targets, timing constants
+- **dht_sensor.h** - DHT22 with mock & auto-simulation
+- **wifi_manager.h** - WiFi with auto IP configuration
+- **logging.h** - RAM circular buffer + flash persistence
+- **updates.h** - OTA updates and boot recovery
+- **web_ui.h** - Settings/configuration page
 
 ## Build & Flash (Arduino CLI)
 
-**Note:** This project uses Arduino CLI for compilation. Arduino IDE is not supported.
-
-### Compile (NodeMCU 0.9 ESP-12 Module)
 ```bash
+# Compile (NodeMCU 0.9 ESP-12 Module)
 arduino-cli compile -b esp8266:esp8266:nodemcu eggubator.ino
-```
 
-### Flash via USB
-```bash
+# Flash via USB
 esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
   --flash_size=4MB \
   --flash_mode=dio \
@@ -140,17 +163,20 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
   0x00000 firmware.bin
 ```
 
-### Update WiFi Credentials
-Edit `wifi_manager.h`:
-```cpp
-#define WIFI_SSID "YourNetworkName"
-#define WIFI_PASSWORD "YourPassword"
-```
+## Configurable Timing (via /mock page)
+
+| Setting | Options |
+|---------|---------|
+| Log Interval | 5s - 30s |
+| Save to Flash | 60min - 4hrs |
+| Atomizer Pulse | 2s - 5s |
+| Egg Turner | 15min - 6hrs |
 
 ## Version History
 
 | Version | Changes |
 |---------|---------|
+| **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |
 | **1.2.2** | Recovery system, uptime display, fixed degree symbol |
 | **1.2.1** | Modular code structure, embedded DHT22 (no library) |
 | **1.2.0** | Pulsating humidity (3s/10s), fan timing (5s), charts |

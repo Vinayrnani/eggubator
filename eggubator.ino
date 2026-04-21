@@ -279,6 +279,11 @@ input:checked + .slider:before { transform: translateX(26px); }
         if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
       }).catch(e => console.error('Data fetch error:', e));
     }
+    // Fix: Call updateData on load and as failsafe after 2s
+    updateData();
+    setTimeout(function() {
+      if (document.getElementById('temp').textContent === '--°C') updateData();
+    }, 2000);
     function saveMainStage() {
       const stage = document.getElementById('mainStageSelect').value;
       fetch('/mock/api?stageType=' + stage).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
@@ -1190,6 +1195,10 @@ void loop() {
   if (millis() - lastLogTime >= LOG_INTERVAL) {
     logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
     lastLogTime = millis();
+  }
+
+  if (shouldSaveToFlash()) {
+    saveLogsToFlash();
   }
 
   if (servoEnabled) {
