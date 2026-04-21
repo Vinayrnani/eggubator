@@ -46,7 +46,8 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 
 ### Egg Turner
 - Rotates eggs every **2 hours** (configurable: 15min - 6 hours)
-- 10-second sweep animation
+- 10-second sweep between alternating left/right resting positions
+- Centers immediately when manually turned OFF or during lockdown
 - **Automatically disabled during lockdown stage**
 
 ### Incubation Stages
@@ -56,19 +57,21 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 | Lockdown | 19-21 | 37.5°C | 65% |
 
 ### Data Logging
-- Logs to **RAM** (500 entries circular buffer)
-- Stores timestamp, temp, humidity, device states
-- Save to flash when ~390 entries OR interval reached (whichever first)
+- Logs to **RAM** (500-entry circular buffer)
+- Stores timestamp, temp, humidity, device states, and signed egg-turner position (`-1 / 0 / 1`)
+- Saves to flash when a sector is nearly full based on the real `LogEntry` size, or when the flash-save interval is reached
 - Flash storage: 1MB (256 sectors × 4KB), circular
+- Browser history uses native IndexedDB with boot-scoped sync metadata so logs from different boots are not silently mixed
 - **Settings persist in EEPROM** across reboots
 
 ### Web Interface
 - Live temperature & humidity display
 - **Per-device control** (each device: OFF/AUTO toggle)
-- Temperature & humidity charts
-- **Controls state chart** (heater, atomizer, fan, servo)
+- Temperature & humidity charts with live stage target lines
+- **Controls state chart** (heater, atomizer, fan, servo position)
 - **Uptime display**
 - **Incubation stage selector**
+- Built-in settings/mock page link from the dashboard
 - OTA firmware update
 - Settings page for timing/mock configuration
 
@@ -129,26 +132,26 @@ Upload firmware via web interface at `http://<IP>/update`
 
 ```
 eggubator/
-├── eggubator.ino       # Main sketch (~33KB)
-├── config.h            # Configuration constants
-├── dht_sensor.h       # DHT22 sensor with mock/simulation
-├── wifi_manager.h     # WiFi connection with static IP
-├── logging.h          # RAM/flash data logging
-├── updates.h          # OTA update & recovery functions
-├── web_ui.h          # Settings page HTML
-└── firmware.bin       # Compiled firmware (~330KB)
+├── eggubator.ino       # Main sketch and control logic
+├── config.h            # Configuration constants and EEPROM layout
+├── dht_sensor.h        # DHT22 sensor with mock/simulation
+├── wifi_manager.h      # WiFi connection with static IP
+├── logging.h/.cpp      # RAM/flash data logging and persistence helpers
+├── updates.h           # OTA update & recovery functions
+├── web_ui.h            # Embedded dashboard + settings HTML/JS
+└── firmware.bin        # Compiled firmware image
 ```
 
 ## Modular Code
 
 The project is modularized for maintainability:
 
-- **config.h** - Pins, targets, timing constants
+- **config.h** - Pins, defaults, stage targets, and EEPROM addresses
 - **dht_sensor.h** - DHT22 with mock & auto-simulation
 - **wifi_manager.h** - WiFi with auto IP configuration
-- **logging.h** - RAM circular buffer + flash persistence
+- **logging.h/.cpp** - RAM circular buffer + flash persistence
 - **updates.h** - OTA updates and boot recovery
-- **web_ui.h** - Settings/configuration page
+- **web_ui.h** - Embedded dashboard and settings pages
 
 ## Build & Flash (Arduino CLI)
 
@@ -177,6 +180,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.3.0** | Removed Dexie dependency, unified the embedded UI, fixed boot-scoped log sync, stage persistence, and egg-turner behavior |
 | **1.2.5** | Fix: EEPROM settings persistence - call loadSettings AFTER initRecovery |
 | **1.2.4** | EEPROM persistence for settings, flash logging with sector management |
 | **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |

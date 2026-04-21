@@ -1,40 +1,48 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// WiFi Configuration
 #define WIFI_SSID "Sweet Home"
 #define WIFI_PASSWORD "dishoom1234"
 
-// Target Values
+#define INCUBATION_TARGET_TEMP 37.5f
+#define INCUBATION_TARGET_HUMIDITY 55.0f
+#define LOCKDOWN_TARGET_TEMP 37.5f
+#define LOCKDOWN_TARGET_HUMIDITY 65.0f
+
 extern float TARGET_TEMP;
 extern float TARGET_HUMIDITY;
-#define TEMP_HYSTERESIS 0.5
-#define HUMIDITY_HYSTERESIS 5.0
-#define MAX_SAFE_TEMP 38.0
+#define TEMP_HYSTERESIS 0.5f
+#define HUMIDITY_HYSTERESIS 5.0f
+#define MAX_SAFE_TEMP 38.0f
 
-// Pin Definitions
 #define DHTPIN D4
 #define RELAY_HEATER D1
 #define RELAY_ATOMIZER D2
 #define RELAY_FAN D3
 #define SERVO_PIN D5
 
-// Timing Constants
+#define DEFAULT_LOG_INTERVAL 10000UL
+#define DEFAULT_SAVE_FLASH_INTERVAL 7200000UL
+#define DEFAULT_EGG_TURN_INTERVAL 7200000UL
+#define DEFAULT_PULSE_ON_TIME 2000UL
+
 extern unsigned long PULSE_ON_TIME;
-#define PULSE_OFF_TIME 10000
-#define FAN_EXTEND_TIME 5000
+#define PULSE_OFF_TIME 10000UL
+#define FAN_EXTEND_TIME 5000UL
 extern unsigned long LOG_INTERVAL;
 extern unsigned long SAVE_FLASH_INTERVAL;
 extern unsigned long EGG_TURN_INTERVAL;
-#define EGG_TURN_DURATION 10000      // 10 seconds
+#define EGG_TURN_DURATION 10000UL
 #define SERVO_CENTER 90
 #define SERVO_ANGLE 45
 
-// Storage
-#define MAX_LOG_ENTRIES 500          // RAM capacity (~4KB)
-#define LOG_SECTOR_COUNT 256         // 1MB = 256 sectors for 15 days
+#define MAX_LOG_ENTRIES 500
+#define LOG_SECTOR_COUNT 256
+#define EEPROM_SIZE_BYTES 512
 
-// EEPROM Addresses for Settings
+#define EEPROM_BOOT_OK 10
+#define EEPROM_BOOT_COUNT 11
+#define EEPROM_SECTOR_ADDR 20
 #define EEPROM_SETTINGS_MAGIC 30
 #define EEPROM_LOG_INTERVAL 31
 #define EEPROM_SAVE_FLASH 35
@@ -42,6 +50,7 @@ extern unsigned long EGG_TURN_INTERVAL;
 #define EEPROM_PULSE_ON 43
 #define EEPROM_STAGE 47
 
+void applyStageSettings(bool lockdown);
 void saveSettings();
 void loadSettings();
 
