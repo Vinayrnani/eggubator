@@ -896,18 +896,22 @@ void handleMockSensor() {
   } else if (server.hasArg("logInterval")) {
     unsigned long val = server.arg("logInterval").toInt();
     LOG_INTERVAL = val;
+    saveSettings();
     server.send(200, "text/plain", "Log interval set to " + String(val/1000) + "s");
   } else if (server.hasArg("saveFlashInterval")) {
     unsigned long val = server.arg("saveFlashInterval").toInt();
     SAVE_FLASH_INTERVAL = val;
+    saveSettings();
     server.send(200, "text/plain", "Save to Flash interval set to " + String(val/60000) + "min");
   } else if (server.hasArg("eggTurnInterval")) {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
+    saveSettings();
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();
     PULSE_ON_TIME = val;
+    saveSettings();
     server.send(200, "text/plain", "Atomizer pulse set to " + String(val/1000) + "s");
   } else if (server.hasArg("stageType")) {
     String type = server.arg("stageType");
@@ -920,6 +924,7 @@ void handleMockSensor() {
       TARGET_TEMP = 37.5;
       TARGET_HUMIDITY = 55.0;
     }
+    saveSettings();
     server.send(200, "text/plain", "Stage set to " + type);
   } else {
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
@@ -1134,6 +1139,7 @@ void setup() {
   eggServo.attach(SERVO_PIN);
 
   initLogging();
+  loadSettings();
   initRecovery();
   connectWiFi();
   markBootSuccess();

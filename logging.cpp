@@ -133,3 +133,76 @@ void clearLogs() {
   EEPROM.commit();
   Serial.println("Logs cleared");
 }
+
+void loadSettings() {
+  extern unsigned long LOG_INTERVAL;
+  extern unsigned long SAVE_FLASH_INTERVAL;
+  extern unsigned long EGG_TURN_INTERVAL;
+  extern unsigned long PULSE_ON_TIME;
+  extern bool stageLockdown;
+  uint32_t val = 0;
+  
+  EEPROM.get(EEPROM_LOG_INTERVAL, val);
+  LOG_INTERVAL = (val == 0xFFFFFFFF || val == 0) ? 10000 : val;
+  
+  val = 0;
+  EEPROM.get(EEPROM_SAVE_FLASH, val);
+  SAVE_FLASH_INTERVAL = (val == 0xFFFFFFFF || val == 0) ? 7200000 : val;
+  
+  val = 0;
+  EEPROM.get(EEPROM_EGG_TURN, val);
+  EGG_TURN_INTERVAL = (val == 0xFFFFFFFF || val == 0) ? 7200000 : val;
+  
+  val = 0;
+  EEPROM.get(EEPROM_PULSE_ON, val);
+  PULSE_ON_TIME = (val == 0xFFFFFFFF || val == 0) ? 2000 : val;
+  
+  uint8_t stage = EEPROM.read(EEPROM_STAGE);
+  stageLockdown = (stage == 1);
+  
+  Serial.print("Settings loaded - Log:");
+  Serial.print(LOG_INTERVAL/1000);
+  Serial.print("s Flash:");
+  Serial.print(SAVE_FLASH_INTERVAL/60000);
+  Serial.print("m Turn:");
+  Serial.print(EGG_TURN_INTERVAL/3600000);
+  Serial.print("h Pulse:");
+  Serial.print(PULSE_ON_TIME/1000);
+  Serial.print("s Stage:");
+  Serial.println(stageLockdown ? "LOCKDOWN" : "INCUBATION");
+}
+
+void saveSettings() {
+  extern unsigned long LOG_INTERVAL;
+  extern unsigned long SAVE_FLASH_INTERVAL;
+  extern unsigned long EGG_TURN_INTERVAL;
+  extern unsigned long PULSE_ON_TIME;
+  extern bool stageLockdown;
+  bool changed = false;
+  uint32_t oldVal = 0;
+  uint8_t oldStage;
+  
+  EEPROM.get(EEPROM_LOG_INTERVAL, oldVal);
+  if (LOG_INTERVAL != oldVal) { EEPROM.put(EEPROM_LOG_INTERVAL, LOG_INTERVAL); changed = true; }
+  
+  oldVal = 0;
+  EEPROM.get(EEPROM_SAVE_FLASH, oldVal);
+  if (SAVE_FLASH_INTERVAL != oldVal) { EEPROM.put(EEPROM_SAVE_FLASH, SAVE_FLASH_INTERVAL); changed = true; }
+  
+  oldVal = 0;
+  EEPROM.get(EEPROM_EGG_TURN, oldVal);
+  if (EGG_TURN_INTERVAL != oldVal) { EEPROM.put(EEPROM_EGG_TURN, EGG_TURN_INTERVAL); changed = true; }
+  
+  oldVal = 0;
+  EEPROM.get(EEPROM_PULSE_ON, oldVal);
+  if (PULSE_ON_TIME != oldVal) { EEPROM.put(EEPROM_PULSE_ON, PULSE_ON_TIME); changed = true; }
+  
+  oldStage = EEPROM.read(EEPROM_STAGE);
+  uint8_t newStage = stageLockdown ? 1 : 0;
+  if (oldStage != newStage) { EEPROM.write(EEPROM_STAGE, newStage); changed = true; }
+  
+  if (changed) {
+    EEPROM.commit();
+    Serial.println("Settings saved");
+  }
+}

@@ -35,5 +35,7 @@ void getLogDataForWeb(String& json);
 bool shouldSaveToFlash();
 void saveLogsToFlash();
 void clearLogs();
+void loadSettings();
+void saveSettings();
 
 #endif
