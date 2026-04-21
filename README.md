@@ -104,6 +104,7 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 | `/data` | JSON sensor data with logs |
 | `/control?device=X&mode=Y` | Control device (heater/atomizer/fan/servo: off/auto) |
 | `/mock/api` | Mock sensor & timing APIs |
+| `/vendor/dexie-3.2.7.min.js` | Vendored Dexie asset served from firmware |
 | `/ota/check` | Check for updates |
 | `/ota/update` | Trigger OTA update |
 | `/reboot` | Reboot device |
@@ -135,7 +136,8 @@ eggubator/
 ├── wifi_manager.h     # WiFi connection with static IP
 ├── logging.h          # RAM/flash data logging
 ├── updates.h          # OTA update & recovery functions
-├── web_ui.h          # Settings page HTML
+├── web_ui.h           # Shared dashboard/settings HTML served by firmware
+├── dexie_asset.h      # Vendored Dexie bundle served locally from firmware
 └── firmware.bin       # Compiled firmware (~330KB)
 ```
 
@@ -148,7 +150,8 @@ The project is modularized for maintainability:
 - **wifi_manager.h** - WiFi with auto IP configuration
 - **logging.h** - RAM circular buffer + flash persistence
 - **updates.h** - OTA updates and boot recovery
-- **web_ui.h** - Settings/configuration page
+- **web_ui.h** - Shared dashboard/settings pages served from firmware
+- **dexie_asset.h** - Pinned Dexie asset served locally from firmware
 
 ## Build & Flash (Arduino CLI)
 

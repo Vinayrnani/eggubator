@@ -73,3 +73,8 @@ Fixed issues:
 3. Updated AGENT.md with correct commands
 4. Pushed to gitKill switch implementation - per device OFF/AUTO mode with improved UI
 Kill switch implementation - per device OFF/AUTO mode with improved UI
+
+
+### User: Fix the remaining root-page error while keeping Dexie-based log storage
+
+**Action:** Promoted `web_ui.h` to the shared UI source, vendored Dexie 3.2.7 as a firmware-served gzip asset, switched HTML delivery to `send_P` with explicit cache headers, and hardened the dashboard log-storage bootstrap/fallback flow.
