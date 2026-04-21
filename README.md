@@ -177,6 +177,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.2.5** | Fix: EEPROM settings persistence - call loadSettings AFTER initRecovery |
 | **1.2.4** | EEPROM persistence for settings, flash logging with sector management |
 | **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |
 | **1.2.2** | Recovery system, uptime display, fixed degree symbol |
