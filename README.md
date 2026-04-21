@@ -58,8 +58,9 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 ### Data Logging
 - Logs to **RAM** (500 entries circular buffer)
 - Stores timestamp, temp, humidity, device states
-- Auto-purges oldest when full
-- Periodic save to flash (configurable)
+- Save to flash when ~390 entries OR interval reached (whichever first)
+- Flash storage: 1MB (256 sectors × 4KB), circular
+- **Settings persist in EEPROM** across reboots
 
 ### Web Interface
 - Live temperature & humidity display
@@ -176,6 +177,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.2.4** | EEPROM persistence for settings, flash logging with sector management |
 | **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |
 | **1.2.2** | Recovery system, uptime display, fixed degree symbol |
 | **1.2.1** | Modular code structure, embedded DHT22 (no library) |
