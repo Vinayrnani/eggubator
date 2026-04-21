@@ -10,11 +10,97 @@ bool logFull = false;
 unsigned long lastLogTime = 0;
 unsigned long lastSaveFlashTime = 0;
 
-static int currentSector = 0;
+int currentSector = 0;
 
 #define EEPROM_SECTOR_ADDR 20
 #define FLASH_BASE_ADDR 0x100000
-#define SECTOR_THRESHOLD 390
+
+void getRawLogs(String& json, uint32_t afterT, int afterSector) {
+  int count = 0;
+  int nextSec = -1;
+  uint32_t nextT = 0;
+  bool reachedEnd = false;
+
+  json = "{\"logs\":[";
+
+  // 1. RAM buffer (newest to oldest)
+  int entriesInRam = logFull ? MAX_LOG_ENTRIES : logIndex;
+  int idx = (logIndex - 1 + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
+
+  for (int i = 0; i < entriesInRam; i++) {
+    if (currentSector == afterSector && logBuffer[idx].timestamp <= afterT) {
+      reachedEnd = true;
+      break;
+    }
+
+    if (count >= 100) {
+      nextSec = currentSector;
+      nextT = logBuffer[idx].timestamp;
+      break;
+    }
+
+    if (count > 0) json += ",";
+    json += "{\"t\":" + String(logBuffer[idx].timestamp) +
+            ",\"tmp\":" + String(logBuffer[idx].temp) +
+            ",\"hum\":" + String(logBuffer[idx].hum) +
+            ",\"sts\":" + String(logBuffer[idx].states) +
+            ",\"srv\":" + String(logBuffer[idx].servoPos) +
+            ",\"sec\":" + String(currentSector) + "}";
+    count++;
+    idx = (idx - 1 + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
+  }
+
+  // 2. Flash sectors (backwards)
+  if (!reachedEnd && nextSec == -1) {
+    int s = (currentSector - 1 + LOG_SECTOR_COUNT) % LOG_SECTOR_COUNT;
+    for (int i = 0; i < LOG_SECTOR_COUNT; i++) {
+      // Check if we are looping back to currentSector
+      if (s == currentSector) break; 
+
+      LogEntry* tempBuffer = (LogEntry*)malloc(SECTOR_SIZE);
+      if (!tempBuffer) break;
+
+      uint32_t flashAddr = FLASH_BASE_ADDR + (s * SECTOR_SIZE);
+      ESP.flashRead(flashAddr, (uint32_t*)tempBuffer, SECTOR_SIZE);
+      
+      int entriesInSector = SECTOR_SIZE / sizeof(LogEntry);
+      bool sectorHasData = false;
+
+      for (int j = entriesInSector - 1; j >= 0; j--) {
+        if (tempBuffer[j].timestamp == 0xFFFFFFFF || tempBuffer[j].timestamp == 0) continue;
+        sectorHasData = true;
+
+        if (s == afterSector && tempBuffer[j].timestamp <= afterT) {
+          reachedEnd = true;
+          break;
+        }
+
+        if (count >= 100) {
+          nextSec = s;
+          nextT = tempBuffer[j].timestamp;
+          break;
+        }
+
+        if (count > 0) json += ",";
+        json += "{\"t\":" + String(tempBuffer[j].timestamp) +
+                ",\"tmp\":" + String(tempBuffer[j].temp) +
+                ",\"hum\":" + String(tempBuffer[j].hum) +
+                ",\"sts\":" + String(tempBuffer[j].states) +
+                ",\"srv\":" + String(tempBuffer[j].servoPos) +
+                ",\"sec\":" + String(s) + "}";
+        count++;
+      }
+
+      free(tempBuffer);
+      if (reachedEnd || nextSec != -1) break;
+      if (s == afterSector) break;
+      
+      s = (s - 1 + LOG_SECTOR_COUNT) % LOG_SECTOR_COUNT;
+    }
+  }
+
+  json += "],\"nextT\":" + String(nextT) + ",\"nextSec\":" + String(nextSec) + ",\"totalSec\":" + String(LOG_SECTOR_COUNT) + "}";
+}
 
 void initLogging() {
   logIndex = 0;

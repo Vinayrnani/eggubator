@@ -26,12 +26,14 @@ struct LogEntry {
 extern LogEntry logBuffer[MAX_LOG_ENTRIES];
 extern int logIndex;
 extern bool logFull;
+extern int currentSector;
 extern unsigned long lastLogTime;
 extern unsigned long lastSaveFlashTime;
 
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
 void getLogDataForWeb(String& json);
+void getRawLogs(String& json, uint32_t afterT, int afterSector);
 bool shouldSaveToFlash();
 void saveLogsToFlash();
 void clearLogs();

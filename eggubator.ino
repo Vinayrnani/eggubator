@@ -91,6 +91,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
   <title>EGGubator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
@@ -231,6 +232,11 @@ input:checked + .slider:before { transform: translateX(26px); }
     <div class="version">v<span id="version">--</span></div>
   </div>
   <script>
+    const db = new Dexie("eggLogs");
+    db.version(1).stores({
+      logs: '[sec+t], absT'
+    });
+
     const devices = [
       { id: 'heater', name: 'Heater' },
       { id: 'atomizer', name: 'Atomizer' },
@@ -238,6 +244,10 @@ input:checked + .slider:before { transform: translateX(26px); }
       { id: 'servo', name: 'Egg Turner' }
     ];
     let devicesInited = false;
+    let syncing = false;
+    let espUptimeMs = 0;
+    let currentSector = 0;
+
     function initDevices() {
       if (devicesInited) return;
       devicesInited = true;
@@ -247,9 +257,59 @@ input:checked + .slider:before { transform: translateX(26px); }
       });
     }
     initDevices();
-    let lastLogLen = 0;
+
+    async function syncLogs() {
+      if (syncing) return;
+      syncing = true;
+      const alertBox = document.getElementById('alertBox');
+      alertBox.textContent = "Syncing records...";
+      alertBox.classList.add('show');
+
+      try {
+        await db.logs.where('absT').below(Date.now() - 30*24*60*60*1000).delete();
+        const latest = await db.logs.orderBy('[sec+t]').last();
+        let afterT = latest ? latest.t : 0;
+        let afterSector = latest ? latest.sec : -1;
+
+        while(true) {
+          const response = await fetch(`/data?afterT=${afterT}&afterSec=${afterSector}`);
+          const data = await response.json();
+          if (!data.logs || data.logs.length === 0) break;
+
+          const entries = data.logs.map(log => ({
+            ...log,
+            absT: Date.now() - (espUptimeMs - log.t),
+            temp: log.tmp / 10.0,
+            hum: log.hum / 10.0,
+            h: !!(log.sts & 0x01),
+            a: !!(log.sts & 0x02),
+            f: !!(log.sts & 0x04),
+            s: (log.sts & 0x08) ? (log.srv === 255 ? -1 : (log.srv === 1 ? 1 : 0)) : 0
+          }));
+
+          await db.logs.bulkPut(entries);
+          if (data.nextSec === -1) break;
+          afterT = data.nextT;
+          afterSector = data.nextSec;
+        }
+        
+        const allLogs = await db.logs.orderBy('absT').reverse().limit(1000).toArray();
+        const chartLogs = allLogs.reverse().map(l => ({...l, t: l.absT}));
+        drawTempChart(chartLogs);
+        drawHumChart(chartLogs);
+        drawCtrlChart(chartLogs);
+      } catch (e) {
+        console.error('Sync error:', e);
+      } finally {
+        syncing = false;
+        alertBox.classList.remove('show');
+      }
+    }
+
     function updateData() {
       fetch('/data').then(r => r.json()).then(d => {
+        espUptimeMs = d.uptime_ms;
+        currentSector = d.currentSector;
         document.getElementById('version').textContent = d.version;
         document.getElementById('temp').textContent = d.temperature.toFixed(1)+'°C';
         document.getElementById('hum').textContent = d.humidity.toFixed(1)+'%';
@@ -276,14 +336,16 @@ input:checked + .slider:before { transform: translateX(26px); }
           modeSwitch.checked = (mode === 0);
         });
         if (d.targetTemp) document.getElementById('targets').textContent = 'Target: ' + d.targetTemp.toFixed(1) + 'C | ' + d.targetHumidity.toFixed(0) + '%';
-        if (d.log && d.log.length > 0) { console.log('Log entries:', d.log.length); drawTempChart(d.log); drawHumChart(d.log); drawCtrlChart(d.log); }
+        
+        if (!syncing) syncLogs();
       }).catch(e => console.error('Data fetch error:', e));
     }
-    // Fix: Call updateData on load and as failsafe after 2s
+
     updateData();
     setTimeout(function() {
       if (document.getElementById('temp').textContent === '--°C') updateData();
     }, 2000);
+
     function saveMainStage() {
       const stage = document.getElementById('mainStageSelect').value;
       fetch('/mock/api?stageType=' + stage).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
@@ -455,7 +517,12 @@ input:checked + .slider:before { transform: translateX(26px); }
         logData.forEach((p, i) => {
           const x = padL + ((p.t - minTime) / timeRange) * viewW + offset;
           if (x < padL || x > padL + plotW) return;
-          const val = p[dev.key] ? 1 : 0;
+          let val;
+          if (dev.key === 's') {
+            val = p.s === -1 ? 0 : (p.s === 1 ? 1 : 0.5);
+          } else {
+            val = p[dev.key] ? 1 : 0;
+          }
           const y = padT + (idx + 0.5) * rowH + (1 - val) * rowH * 0.4;
           started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
           started = true;
@@ -489,7 +556,7 @@ input:checked + .slider:before { transform: translateX(26px); }
     setupPinchZoom('tempChart', 'temp');
     setupPinchZoom('humChart', 'hum');
     setupPinchZoom('ctrlChart', 'ctrl');
-    setInterval(updateData, 2000);
+    setInterval(updateData, 5000);
     updateData();
   </script>
 </body>
@@ -775,6 +842,15 @@ void handleMockPage() {
 }
 
 void handleData() {
+  if (server.hasArg("afterT") && server.hasArg("afterSec")) {
+    uint32_t afterT = (uint32_t)server.arg("afterT").toInt();
+    int afterSec = server.arg("afterSec").toInt();
+    String json = "";
+    getRawLogs(json, afterT, afterSec);
+    server.send(200, "application/json", json);
+    return;
+  }
+
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
   int hours = (uptimeSec % 86400) / 3600;
@@ -784,7 +860,7 @@ void handleData() {
   if (days > 0) uptimeStr += String(days) + "d ";
   uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
   
-String json = "{\"temperature\":" + String(currentTemp) +
+  String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"humidity\":" + String(currentHumidity) +
                 ",\"heater\":" + String(heaterState ? "true" : "false") +
                 ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
@@ -792,6 +868,8 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"servo\":" + String(servoEnabled ? "true" : "false") +
                 ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
                 ",\"uptime\":\"" + uptimeStr + "\"" +
+                ",\"uptime_ms\":" + String(millis()) +
+                ",\"currentSector\":" + String(currentSector) +
                 ",\"mock\":" + String(useMockSensor ? "true" : "false") +
                  ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                 ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
@@ -809,7 +887,7 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
                 ",\"flashTotal\":4194304" +
                 "}";
-  getLogDataForWeb(json);
+  // getLogDataForWeb(json);
   json += "}";
   server.send(200, "application/json", json);
 }
