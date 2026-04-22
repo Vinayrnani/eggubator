@@ -290,6 +290,19 @@ R"webui(  <script>
       return 'lastSyncedSector:' + String(bootId || 0);
     }
 
+    function buildValidSectorList(firstSector, sectorCount) {
+      const sectors = [];
+      const normalizedFirstSector = parseInt(firstSector, 10);
+      const normalizedSectorCount = parseInt(sectorCount, 10);
+      if (isNaN(normalizedFirstSector) || isNaN(normalizedSectorCount) || normalizedSectorCount <= 0) {
+        return sectors;
+      }
+      for (let i = 0; i < normalizedSectorCount; i++) {
+        sectors.push((normalizedFirstSector + i) % 256);
+      }
+      return sectors;
+    }
+
     async function cleanupOldLogs() {
       if (!logStorageReady || !db) return;
       const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
@@ -300,7 +313,7 @@ R"webui(  <script>
       }
     }
 
-    async function syncLogs(bootId, currentSector, absBaseTime) {
+    async function syncLogs(bootId, currentSector, firstSector, sectorCount, absBaseTime) {
       if (!logStorageReady || !db || isSyncing) return;
 
       if (syncBootId !== bootId) {
@@ -308,22 +321,27 @@ R"webui(  <script>
         syncQueue = [];
       }
 
+      const validSectors = buildValidSectorList(firstSector, sectorCount);
+      if (validSectors.length === 0) {
+        hideBanner('syncStatus');
+        return;
+      }
+
       const syncKey = getSyncKey(bootId);
       let lastSynced = safeGetStorage(syncKey);
-      if (lastSynced === null) {
-        lastSynced = currentSector;
-      } else {
+      if (lastSynced !== null) {
         lastSynced = parseInt(lastSynced, 10);
         if (isNaN(lastSynced)) {
-          lastSynced = currentSector;
+          lastSynced = null;
         }
       }
 
       if (syncQueue.length === 0) {
-        let sector = (lastSynced + 1) % 256;
-        while (sector !== currentSector) {
-          syncQueue.push(sector);
-          sector = (sector + 1) % 256;
+        if (lastSynced === null) {
+          syncQueue = validSectors.slice();
+        } else {
+          const lastSyncedIdx = validSectors.indexOf(lastSynced);
+          syncQueue = lastSyncedIdx >= 0 ? validSectors.slice(lastSyncedIdx + 1) : validSectors.slice();
         }
       }
 
@@ -341,7 +359,7 @@ R"webui(  <script>
         try {
           const response = await fetch('/data?sector=' + sectorToSync);
           const data = await response.json();
-          if (data && data.length > 0) {
+          if (Array.isArray(data) && data.length > 0) {
             const records = data.map(function(point) {
               return normalizeLogRecord(point, bootId, absBaseTime);
             });
@@ -436,7 +454,7 @@ R"webui(  <script>
         }
 
         if (data.bootId !== undefined && data.currentSector !== undefined) {
-          await syncLogs(data.bootId, data.currentSector, absBaseTime);
+          await syncLogs(data.bootId, data.currentSector, data.flashFirstSector, data.flashSectorCount, absBaseTime);
           await cleanupOldLogs();
         }
 

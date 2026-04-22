@@ -143,6 +143,8 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"bootId\":" + String(bootId) +
                 ",\"uptime_ms\":" + String(millis()) +
                 ",\"currentSector\":" + String(currentSector) +
+                ",\"flashFirstSector\":" + String(getFlashLogStartSector()) +
+                ",\"flashSectorCount\":" + String(getFlashLogSectorCount()) +
                 ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"heapTotal\":81920" +
                 ",\"cpu\":" + String(cpuUtil) +

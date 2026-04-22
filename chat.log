@@ -78,3 +78,13 @@ Kill switch implementation - per device OFF/AUTO mode with improved UI
 ### User: Fix the remaining root-page error while keeping Dexie-based log storage
 
 **Action:** Promoted `web_ui.h` to the shared UI source, vendored Dexie 3.2.7 as a firmware-served gzip asset, switched HTML delivery to `send_P` with explicit cache headers, and hardened the dashboard log-storage bootstrap/fallback flow.
+
+---
+
+### User: Implement a durable fix in eggubator for the flash chunk-sync bug, then compile, OTA deploy, and personally verify the result through the running web UI.
+
+**Action:**
+- Added validated flash-sector headers and current-boot sector tracking so `/data` exposes `flashFirstSector`/`flashSectorCount` and stale flash sectors are ignored.
+- Fixed the Dexie sync queue in `web_ui.h` to request only valid sectors, preventing `lastSynced == currentSector` from wrapping across the full 1MB log region.
+- Hardened flash log parsing and RAM/flash serialization with entry validation and chronological sector writes.
+- Bumped firmware version to `1.2.6`, updated README, compiled successfully with Arduino CLI from a matching sketch directory, OTA deployed through the Cloudflare tunnel, and verified via the running dashboard/network traces that the UI synced only the needed sector chunks instead of sweeping the whole flash region.

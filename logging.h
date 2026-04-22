@@ -4,12 +4,20 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-struct LogEntry {
+struct __attribute__((packed)) LogEntry {
   uint32_t timestamp;
-  uint16_t temp;    // temperature × 10 (0-6553.5°C)
-  uint16_t hum;     // humidity × 10 (0-6553.5%)
-  uint8_t states;   // bit 0: heater, bit 1: atomizer, bit 2: fan, bit 3: servo
-  uint8_t servoPos; // servo position (0-180)
+  uint16_t temp;
+  uint16_t hum;
+  uint8_t states;
+  uint8_t servoPos;
+};
+
+struct __attribute__((packed)) FlashLogSectorHeader {
+  uint32_t magic;
+  uint32_t version;
+  uint32_t bootId;
+  uint32_t entryCount;
+  uint32_t entrySize;
 };
 
 #define MAX_LOG_ENTRIES 500
@@ -17,6 +25,10 @@ struct LogEntry {
 #define SECTOR_SIZE 4096
 #define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
 #define SECTOR_THRESHOLD 390
+
+#define FLASH_LOG_MAGIC 0x45474755UL
+#define FLASH_LOG_VERSION 1UL
+#define FLASH_LOG_ENTRIES_PER_SECTOR ((SECTOR_SIZE - (int)sizeof(FlashLogSectorHeader)) / (int)sizeof(LogEntry))
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
@@ -29,6 +41,7 @@ extern bool logFull;
 extern unsigned long lastLogTime;
 extern unsigned long lastSaveFlashTime;
 extern int currentSector;
+extern int currentBootFlashSectorCount;
 
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
@@ -41,5 +54,8 @@ void loadSettings();
 void saveSettings();
 uint32_t byteRead(int addr);
 void byteWrite(int addr, uint32_t val);
+int getFlashLogStartSector();
+int getFlashLogSectorCount();
+bool hasFlashLogSector(int sector);
 
 #endif

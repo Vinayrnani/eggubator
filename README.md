@@ -60,6 +60,7 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 - Stores timestamp, temp, humidity, device states
 - Save to flash when ~390 entries OR interval reached (whichever first)
 - Flash storage: 1MB (256 sectors × 4KB), circular
+- Flash sectors include validated metadata headers so the dashboard syncs only current-boot sectors and ignores stale/random bytes
 - **Settings persist in EEPROM** across reboots
 
 ### Web Interface
@@ -101,7 +102,7 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 |----------|-------------|
 | `/` | Main dashboard |
 | `/mock` | Settings & mock configuration |
-| `/data` | JSON sensor data with logs |
+| `/data` | JSON sensor data with RAM logs plus current-boot flash sync metadata |
 | `/control?device=X&mode=Y` | Control device (heater/atomizer/fan/servo: off/auto) |
 | `/mock/api` | Mock sensor & timing APIs |
 | `/vendor/dexie-3.2.7.min.js` | Vendored Dexie asset served from firmware |
@@ -180,6 +181,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.2.6** | Fix flash chunk sync: only sync valid current-boot sectors, add sector headers, reject stale/random flash bytes |
 | **1.2.5** | Fix: EEPROM settings persistence - call loadSettings AFTER initRecovery |
 | **1.2.4** | EEPROM persistence for settings, flash logging with sector management |
 | **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |
