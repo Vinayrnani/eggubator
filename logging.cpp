@@ -11,10 +11,11 @@ unsigned long lastLogTime = 0;
 unsigned long lastSaveFlashTime = 0;
 
 int currentSector = 0;
+int sectorsUsed = 0;
 
 #define EEPROM_SECTOR_ADDR 20
+#define EEPROM_SECTORS_USED 21
 #define FLASH_BASE_ADDR 0x100000
-#define SECTOR_THRESHOLD 390
 
 void initLogging() {
   logIndex = 0;
@@ -23,11 +24,14 @@ void initLogging() {
   lastSaveFlashTime = millis();
   
   currentSector = EEPROM.read(EEPROM_SECTOR_ADDR);
+  sectorsUsed = EEPROM.read(EEPROM_SECTORS_USED);
   currentSector++;
   if (currentSector >= LOG_SECTOR_COUNT) {
     currentSector = 0;
+    sectorsUsed = 0;
   }
   EEPROM.write(EEPROM_SECTOR_ADDR, currentSector);
+  EEPROM.write(EEPROM_SECTORS_USED, sectorsUsed);
   EEPROM.commit();
   
   Serial.print("Logging initialized - Sector: ");
@@ -201,10 +205,13 @@ void saveLogsToFlash() {
   ESP.flashWrite(flashAddr, (uint32_t*)logBuffer, sizeNeeded);
   
   currentSector++;
+  sectorsUsed++;
   if (currentSector >= LOG_SECTOR_COUNT) {
     currentSector = 0;
+    sectorsUsed = 0;
   }
   EEPROM.write(EEPROM_SECTOR_ADDR, currentSector);
+  EEPROM.write(EEPROM_SECTORS_USED, sectorsUsed);
   EEPROM.commit();
   
   logIndex = 0;
@@ -221,7 +228,9 @@ void clearLogs() {
   logIndex = 0;
   logFull = false;
   currentSector = 0;
+  sectorsUsed = 0;
   EEPROM.write(EEPROM_SECTOR_ADDR, currentSector);
+  EEPROM.write(EEPROM_SECTORS_USED, sectorsUsed);
   EEPROM.commit();
   Serial.println("Logs cleared");
 }

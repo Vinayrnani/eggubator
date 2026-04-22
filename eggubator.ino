@@ -34,6 +34,7 @@ unsigned long LOG_INTERVAL = 10000;
 unsigned long SAVE_FLASH_INTERVAL = 7200000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 unsigned long PULSE_ON_TIME = 2000;  // Atomizer pulse ON time (2 sec default)
+float cpuUtil = 0;  // CPU utilization placeholder
 
 // Target temperature and humidity (can be changed via web/stage selection)
 float TARGET_TEMP = 37.5;    // Default 37.5°C
@@ -56,12 +57,6 @@ int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
-
-// CPU monitoring
-unsigned long lastCpuCheck = 0;
-unsigned long cpuCyclesStart = 0;
-unsigned long cpuCyclesEnd = 0;
-unsigned long cpuUtil = 0;
 
 // Control state variables
 unsigned long atomizerPulseStart = 0;
@@ -143,13 +138,15 @@ String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"servoMode\":" + String(servoMode) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHumidity\":" + String(TARGET_HUMIDITY) +
-                ",\"logCnt\":" + String(logIndex) +
-                ",\"logStorage\":" + String((logIndex * sizeof(LogEntry)) / 1024) +
+                ",\"ramLogCnt\":" + String(logIndex) +
+                ",\"ramLogBytes\":" + String(logIndex * sizeof(LogEntry)) +
+                ",\"flashSector\":" + String(currentSector) +
+                ",\"sectorsUsed\":" + String(sectorsUsed) +
                 ",\"bootId\":" + String(bootId) +
                 ",\"uptime_ms\":" + String(millis()) +
                 ",\"currentSector\":" + String(currentSector) +
-                ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
-                ",\"heapTotal\":81920" +
+",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"heapTotal\":81992" +
                 ",\"cpu\":" + String(cpuUtil) +
                 ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
                 ",\"flashTotal\":4194304" +
@@ -518,18 +515,6 @@ void setup() {
 // ============================================
 void loop() {
   server.handleClient();
-
-  // CPU monitoring - measure cycles every second
-  if (millis() - lastCpuCheck > 1000) {
-    cpuCyclesEnd = ESP.getCycleCount();
-    if (cpuCyclesStart > 0) {
-      unsigned long cycles = cpuCyclesEnd - cpuCyclesStart;
-      cpuUtil = (cycles / 8000); // 80MHz / 10000 = rough %, adjusted
-      if (cpuUtil > 100) cpuUtil = 100;
-    }
-    cpuCyclesStart = cpuCyclesEnd;
-    lastCpuCheck = millis();
-  }
 
   if (millis() - lastReadTime > 2000) {
     if (autoSimMode) {

@@ -181,7 +181,7 @@ R"webui(  <script>
     };
 
     let devicesInited = false;
-    let db = null;
+    window.db = null;
     let logStorageReady = false;
     let isSyncing = false;
     let updateInFlight = false;
@@ -274,21 +274,22 @@ R"webui(  <script>
         showStorageAlert('IndexedDB unavailable. Showing live RAM logs only.');
         return;
       }
-      if (!window.Dexie) {
+if (!window.Dexie) {
         showStorageAlert('Dexie failed to load from firmware. Showing live RAM logs only.');
         return;
       }
+      
       try {
-        db = new Dexie(DB_NAME);
-        db.version(1).stores({
+        window.db = new Dexie(DB_NAME);
+        window.db.version(1).stores({
           logs: LOG_STORE_SCHEMA
         });
-        await db.open();
+        await window.db.open();
         logStorageReady = true;
         hideBanner('storageAlert');
       } catch (error) {
         console.error('Dexie initialization error:', error);
-        db = null;
+        window.db = null;
         logStorageReady = false;
         showStorageAlert('Local log storage is unavailable. Showing live RAM logs only.');
       }
@@ -299,17 +300,17 @@ R"webui(  <script>
     }
 
     async function cleanupOldLogs() {
-      if (!logStorageReady || !db) return;
+      if (!logStorageReady || !window.db) return;
       const thirtyDaysAgo = Date.now() - (30 * 24 * 3600 * 1000);
       try {
-        await db.logs.where('timestamp').below(thirtyDaysAgo).delete();
+        await window.db.logs.where('timestamp').below(thirtyDaysAgo).delete();
       } catch (error) {
         console.error('Cleanup error:', error);
       }
     }
 
     async function getPendingGap(sinceTimestamp) {
-      if (!logStorageReady || !db) return 0;
+      if (!logStorageReady || !window.db) return 0;
       try {
         const response = await fetch('/data?since=' + sinceTimestamp + '&limit=201');
         const data = await response.json();
@@ -364,7 +365,7 @@ R"webui(  <script>
     }
 
     async function syncLogs() {
-      if (!logStorageReady || !db || isSyncing) return;
+      if (!logStorageReady || !window.db || isSyncing) return;
 
       isSyncing = true;
       syncStartTime = Date.now();
@@ -383,7 +384,7 @@ R"webui(  <script>
             const records = data.records.map(function(point) {
               return normalizeLogRecord(point, 0, 0);
             });
-            await db.logs.bulkPut(records);
+            await window.db.logs.bulkPut(records);
             totalSynced += data.records.length;
             since = data.lastTimestamp;
             safeSetStorage('lastSyncedTimestamp', since);
@@ -411,11 +412,11 @@ R"webui(  <script>
     }
 
     async function loadLogsForCharts() {
-      if (!logStorageReady || !db) {
+      if (!logStorageReady || !window.db) {
         return lastLiveLogs;
       }
       try {
-        const logs = await db.logs.orderBy('timestamp').toArray();
+        const logs = await window.db.logs.orderBy('timestamp').toArray();
         return logs.length > 0 ? logs : lastLiveLogs;
       } catch (error) {
         console.error('Read logs error:', error);
@@ -478,14 +479,14 @@ R"webui(  <script>
           return normalizeLogRecord(point, data.bootId || 0, absBaseTime);
         });
 
-        if (logStorageReady && db && lastLiveLogs.length > 0) {
-          await db.logs.bulkPut(lastLiveLogs);
+        if (logStorageReady && window.db && lastLiveLogs.length > 0) {
+          await window.db.logs.bulkPut(lastLiveLogs);
         }
 
         let lastDexieTimestamp = safeGetStorage('lastSyncedTimestamp') || 0;
-        if (lastDexieTimestamp === 0 && logStorageReady && db) {
+        if (lastDexieTimestamp === 0 && logStorageReady && window.db) {
           try {
-            const latestLog = await db.logs.orderBy('timestamp').last();
+            const latestLog = await window.db.logs.orderBy('timestamp').last();
             if (latestLog) lastDexieTimestamp = latestLog.timestamp;
           } catch (e) { console.error('Get latest log error:', e); }
         }
@@ -497,7 +498,7 @@ R"webui(  <script>
           await syncLogs();
           await cleanupOldLogs();
         } else {
-          if (data.bootId !== undefined && data.currentSector !== undefined) {
+          if (gap > 200 && data.bootId !== undefined && data.currentSector !== undefined) {
             await syncLogs();
             await cleanupOldLogs();
           }
@@ -1022,10 +1023,12 @@ const char WEB_MOCK_HTML[] PROGMEM = R"webui(
         <span class="card-title">System Info</span>
       </div>
       <div class="sys-row"><span class="sys-label">RAM</span><span class="sys-val" id="sysHeap">--</span></div>
-      <div class="sys-row"><span class="sys-label">CPU</span><span class="sys-val" id="sysCpu">--</span></div>
       <div class="sys-row"><span class="sys-label">Uptime</span><span class="sys-val" id="sysUptime">--</span></div>
-      <div class="sys-row"><span class="sys-label">Log Records</span><span class="sys-val" id="sysLogCnt">--</span></div>
-      <div class="sys-row"><span class="sys-label">Log Storage</span><span class="sys-val" id="sysLogStorage">--</span></div>
+      <div class="sys-row"><span class="sys-label">RAM Records</span><span class="sys-val" id="sysRamLogCnt">--</span></div>
+      <div class="sys-row"><span class="sys-label">RAM Storage</span><span class="sys-val" id="sysRamLogBytes">--</span></div>
+      <div class="sys-row"><span class="sys-label">Flash Sector</span><span class="sys-val" id="sysFlashSector">--</span></div>
+      <div class="sys-row"><span class="sys-label">Flash Records</span><span class="sys-val" id="sysSectorsUsed">--</span></div>
+      <div class="sys-row"><span class="sys-label">Local Dexie</span><span class="sys-val" id="sysDexieCnt">--</span></div>
     </div>
     <div class="footer">EGGubator v<span id="version">--</span></div>
   </div>
@@ -1062,15 +1065,19 @@ const char WEB_MOCK_HTML[] PROGMEM = R"webui(
           document.getElementById('sysHeap').textContent = '--';
         }
         
-        if (d.sys && d.sys.cpu) {
-          document.getElementById('sysCpu').textContent = d.sys.cpu + '%';
-        } else {
-          document.getElementById('sysCpu').textContent = '--';
-        }
-        
         document.getElementById('sysUptime').textContent = d.uptime || '--';
-        document.getElementById('sysLogCnt').textContent = (d.logCnt || 0) + ' records';
-        document.getElementById('sysLogStorage').textContent = (d.logStorage || 0) + ' KB';
+        document.getElementById('sysRamLogCnt').textContent = (d.ramLogCnt || 0) + ' records';
+        document.getElementById('sysRamLogBytes').textContent = (d.ramLogBytes || 0) + ' bytes';
+        document.getElementById('sysFlashSector').textContent = d.flashSector || 0;
+        document.getElementById('sysSectorsUsed').textContent = (d.sectorsUsed || 0) + ' sectors';
+        
+        if (window.db) {
+          window.db.logs.count().then(cnt => {
+            document.getElementById('sysDexieCnt').textContent = cnt + ' records';
+          }).catch(() => {
+            document.getElementById('sysDexieCnt').textContent = '--';
+          });
+        }
         
       });
     }

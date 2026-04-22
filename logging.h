@@ -29,6 +29,7 @@ extern bool logFull;
 extern unsigned long lastLogTime;
 extern unsigned long lastSaveFlashTime;
 extern int currentSector;
+extern int sectorsUsed;
 
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);

@@ -136,3 +136,31 @@ Fixed issues:
 - README.md: Added v1.2.8 entry
 
 **Deployment:** DDD workflow completed successfully
+
+---
+
+### User: Read markdowns first. Remove any pio related folder the project uses Arduino cli
+
+**Analysis:**
+- No PlatformIO folders or files exist in project
+- Project already uses Arduino CLI as documented in README.md
+
+---
+
+### User: System info needs refinement, show ram records count and log storage of ram in bytes, count of records in flash, current sector, local dexie records
+
+**Action:**
+- Added sectorsUsed tracking with EEPROM persistence
+- Changed logStorage to actual bytes (logIndex * sizeof(LogEntry) = logIndex * 10)
+- Added flashSector, sectorsUsed JSON fields
+- Added Local Dexie count query via db.logs.count()
+- Updated UI labels: RAM Records, RAM Storage (bytes), Flash Sector, Flash Records, Local Dexie
+
+**Files Changed:**
+- logging.cpp: Added sectorsUsed variable, EEPROM_SECTORS_USED
+- logging.h: Added extern sectorsUsed
+- eggubator.ino: Added ramLogCnt, ramLogBytes, flashSector, sectorsUsed to /data JSON
+- web_ui.h: Updated System Info cards with new labels and Dexie query
+- README.md: Added v1.2.9 entry
+
+**Deployment:** DDD workflow completed successfully
