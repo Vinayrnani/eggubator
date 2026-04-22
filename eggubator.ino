@@ -96,12 +96,6 @@ void handleMockPage() {
   sendHtmlPage(WEB_MOCK_HTML, sizeof(WEB_MOCK_HTML) - 1);
 }
 
-void handleDexieAsset() {
-  server.sendHeader("Cache-Control", "public, max-age=31536000, immutable");
-  server.sendHeader("Content-Encoding", "gzip");
-  server.send_P(200, PSTR("application/javascript"), reinterpret_cast<PGM_P>(DEXIE_ASSET_GZ), DEXIE_ASSET_GZ_LEN);
-}
-
 void handleData() {
   if (server.hasArg("since")) {
     int since = server.arg("since").toInt();
@@ -504,7 +498,6 @@ void setup() {
 // Setup web server
   server.on("/", handleRoot);
   server.on("/mock", handleMockPage);
-  server.on(DEXIE_ASSET_URL, handleDexieAsset);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/ota/check", handleOtaCheck);

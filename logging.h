@@ -12,11 +12,11 @@ struct LogEntry {
   uint8_t servoPos; // servo position (0-180)
 };
 
-#define MAX_LOG_ENTRIES 500
+#define MAX_LOG_ENTRIES 400
 #define LOG_SECTOR_COUNT 256
 #define SECTOR_SIZE 4096
 #define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
-#define SECTOR_THRESHOLD 390
+#define SECTOR_THRESHOLD 380
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02

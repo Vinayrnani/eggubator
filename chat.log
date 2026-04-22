@@ -99,3 +99,40 @@ Fixed issues:
 - web_ui.h: CSS, HTML, JavaScript logic
 - eggubator.ino: /data endpoint for gap checking
 - README.md: Added v1.2.6 entry
+
+---
+
+### User: Change the dexie script reference as cdn than local file to save flash size
+
+**Action:** 
+- Replaced local Dexie asset with CDN URL (jsdelivr)
+- Removed dexie_asset.h completely from build
+- Updated web_ui.h to use CDN URL
+- Removed server handler for local Dexie asset
+
+**Files Changed:**
+- web_ui.h: Changed DEXIE_ASSET_URL to CDN
+- eggubator.ino: Removed include and handler
+- dexie_asset.h: Deleted (~26KB flash savings)
+- README.md: Added v1.2.7 entry
+
+**Deployment:** DDD workflow completed successfully
+
+---
+
+### User: Reduce IRAM by reducing log buffer to 4KB only
+
+**Action:** 
+- Reduced log buffer from 500 to 400 entries
+- Updated MAX_LOG_ENTRIES in logging.h and config.h
+- Updated SECTOR_THRESHOLD from 390 to 380
+
+**Memory Savings:**
+- RAM (BSS): 32352 → 31152 bytes (-1200 bytes)
+
+**Files Changed:**
+- logging.h: MAX_LOG_ENTRIES 500→400, SECTOR_THRESHOLD 390→380
+- config.h: MAX_LOG_ENTRIES 500→400
+- README.md: Added v1.2.8 entry
+
+**Deployment:** DDD workflow completed successfully

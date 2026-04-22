@@ -31,7 +31,7 @@ extern unsigned long EGG_TURN_INTERVAL;
 #define SERVO_ANGLE 45
 
 // Storage
-#define MAX_LOG_ENTRIES 500          // RAM capacity (~4KB)
+#define MAX_LOG_ENTRIES 400          // RAM capacity (~4KB)
 #define LOG_SECTOR_COUNT 256         // 1MB = 256 sectors for 15 days
 
 // EEPROM Addresses for Settings
