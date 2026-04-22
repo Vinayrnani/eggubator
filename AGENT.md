@@ -113,7 +113,6 @@ curl -F "firmware=@/sdcard/ArduinoDroid/sketchbook/firmware.bin" http://192.168.
 - **IP Address**: 192.168.100.100
 - **OTA Endpoint**: http://192.168.100.100/update
 - **Web Interface**: http://192.168.100.100/
-- **Cloudflare Tunnel**: https://assured-coat-put-unlimited.trycloudflare.com (temporary, may change)
 
 ## Notes
 
