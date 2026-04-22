@@ -180,6 +180,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.2.6** | Smart sync: ticker for large gaps (>200), countdown timer for normal, dynamic interval from /mock/api |
 | **1.2.5** | Fix: EEPROM settings persistence - call loadSettings AFTER initRecovery |
 | **1.2.4** | EEPROM persistence for settings, flash logging with sector management |
 | **1.2.3** | Mock sensor, auto-simulation, per-device control, configurable timing, incubation stages |

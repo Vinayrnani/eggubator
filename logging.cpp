@@ -128,6 +128,54 @@ void getFlashLogDataForWeb(int sector, String& json) {
   delete[] tempBuf;
 }
 
+void getFlashLogsSince(int sinceTimestamp, int limit, String& recordsJson, int& lastTs, bool& hasMore) {
+  recordsJson = "[";
+  bool first = true;
+  int count = 0;
+  lastTs = sinceTimestamp;
+  
+  for (int sec = 0; sec < LOG_SECTOR_COUNT; sec++) {
+    uint32_t flashAddr = FLASH_BASE_ADDR + (sec * SECTOR_SIZE);
+    LogEntry tempBuf[100];
+    
+    ESP.flashRead(flashAddr, (uint32_t*)tempBuf, 100 * sizeof(LogEntry));
+    
+    for (int i = 0; i < 100; i++) {
+      if (tempBuf[i].timestamp == 0xFFFFFFFF) break;
+      if ((int)tempBuf[i].timestamp <= sinceTimestamp) continue;
+      
+      float tempVal = tempBuf[i].temp / 10.0;
+      float humVal = tempBuf[i].hum / 10.0;
+      bool h = tempBuf[i].states & STATE_HEATER;
+      bool a = tempBuf[i].states & STATE_ATOMIZER;
+      bool f = tempBuf[i].states & STATE_FAN;
+      bool s = tempBuf[i].states & STATE_SERVO;
+      
+      if (!first) recordsJson += ",";
+      recordsJson += "{\"t\":" + String(tempBuf[i].timestamp) +
+             ",\"temp\":" + String(tempVal, 1) +
+             ",\"hum\":" + String(humVal, 1) +
+             ",\"h\":" + String(h ? "true" : "false") +
+             ",\"a\":" + String(a ? "true" : "false") +
+             ",\"f\":" + String(f ? "true" : "false") +
+             ",\"s\":" + String(s ? "true" : "false") + "}";
+      first = false;
+      
+      lastTs = tempBuf[i].timestamp;
+      count++;
+      
+      if (count >= limit) {
+        hasMore = true;
+        recordsJson += "]";
+        return;
+      }
+    }
+  }
+  
+  hasMore = false;
+  recordsJson += "]";
+}
+
 bool shouldSaveToFlash() {
   unsigned long elapsed = millis() - lastSaveFlashTime;
   bool nearFull = (logIndex >= SECTOR_THRESHOLD);

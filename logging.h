@@ -34,6 +34,7 @@ void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
 void getLogDataForWeb(String& json);
 void getFlashLogDataForWeb(int sector, String& json);
+void getFlashLogsSince(int sinceTimestamp, int limit, String& recordsJson, int& lastTs, bool& hasMore);
 bool shouldSaveToFlash();
 void saveLogsToFlash();
 void clearLogs();

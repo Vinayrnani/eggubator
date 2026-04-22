@@ -16,7 +16,6 @@
 #include "wifi_manager.h"
 #include "logging.h"
 #include "updates.h"
-#include "dexie_asset.h"
 #include "web_ui.h"
 
 extern bool useMockSensor;
@@ -104,6 +103,18 @@ void handleDexieAsset() {
 }
 
 void handleData() {
+  if (server.hasArg("since")) {
+    int since = server.arg("since").toInt();
+    int limit = server.hasArg("limit") ? server.arg("limit").toInt() : 100;
+    String recordsJson = "";
+    int lastTs = 0;
+    bool hasMore = false;
+    getFlashLogsSince(since, limit, recordsJson, lastTs, hasMore);
+    String json = "{\"records\":" + recordsJson + ",\"lastTimestamp\":" + String(lastTs) + ",\"hasMore\":" + (hasMore ? "true" : "false") + "}";
+    server.send(200, "application/json", json);
+    return;
+  }
+  
   if (server.hasArg("sector")) {
     int s = server.arg("sector").toInt();
     String json = "";

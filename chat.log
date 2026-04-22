@@ -71,10 +71,31 @@ Fixed issues:
 1. Binary not booting - compiled for correct board (NodeMCU 0.9)
 2. Unicode display - changed `\u00b0` to `°` and added UTF-8 charset
 3. Updated AGENT.md with correct commands
-4. Pushed to gitKill switch implementation - per device OFF/AUTO mode with improved UI
-Kill switch implementation - per device OFF/AUTO mode with improved UI
+4. Pushed to git
 
 
 ### User: Fix the remaining root-page error while keeping Dexie-based log storage
 
 **Action:** Promoted `web_ui.h` to the shared UI source, vendored Dexie 3.2.7 as a firmware-served gzip asset, switched HTML delivery to `send_P` with explicit cache headers, and hardened the dashboard log-storage bootstrap/fallback flow.
+
+---
+
+## Session: 2026-04-22
+
+### User: If the gap between dexie and esp logs are more than 200 records then show foreground ticker with syncing message if not, do the background updatedata the update interval should be dynamic same as log interval and a small timer has to show on the page
+
+**Action:**
+- Added ticker element (CSS + HTML) for syncing message display
+- Added countdown timer showing seconds until next update
+- Gap calculation based on timestamp (sends lastDexieTimestamp to ESP, checks if >200 pending)
+- Dynamic interval: fetches logInterval from /mock/api, uses for setInterval
+- Conditional sync: >200 gap = foreground ticker sync, ≤200 = background with countdown
+- Added getPendingGap(), showTicker(), hideTicker(), startCountdown(), stopCountdown()
+- Modified updateData() and syncLogs() for new behavior
+- Added /data?since=X&limit=201 endpoint for timestamp-based gap check
+- Updated README.md version history
+
+**Files Changed:**
+- web_ui.h: CSS, HTML, JavaScript logic
+- eggubator.ino: /data endpoint for gap checking
+- README.md: Added v1.2.6 entry

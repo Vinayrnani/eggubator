@@ -1,9 +1,7 @@
 #ifndef WEB_UI_H
 #define WEB_UI_H
 
-#ifndef DEXIE_ASSET_URL
-#define DEXIE_ASSET_URL "/vendor/dexie-3.2.7.min.js"
-#endif
+#define DEXIE_ASSET_URL "https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"
 
 const char WEB_ROOT_HTML[] PROGMEM =
 R"webui(
@@ -68,6 +66,10 @@ input:checked + .slider:before { transform: translateX(26px); }
     .stage-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
     .stage-incubation { background: #4CAF50; color: white; }
     .stage-lockdown { background: #f44336; color: white; }
+    .ticker { background: #2196F3; color: white; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-weight: 600; font-size: 14px; display: none; }
+    .ticker.show { display: block; animation: tickerPulse 1s ease-in-out infinite; }
+    @keyframes tickerPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .countdown-timer { background: rgba(255,255,255,0.3); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; color: #333; }
     @media (max-width: 400px) { .device-grid { grid-template-columns: 1fr; } .info-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -106,8 +108,7 @@ input:checked + .slider:before { transform: translateX(26px); }
             <input type="checkbox" id="servoModeSwitch" onchange="toggleDeviceMode('servo')">
             <span class="slider"></span>
 </label>
-         </div>
-        <div class="uptime-tag" id="uptime">--</div>
+          </div>
       </div>
       <div class="stage-row">
         <select id="mainStageSelect" onchange="saveMainStage()">
@@ -116,8 +117,11 @@ input:checked + .slider:before { transform: translateX(26px); }
         </select>
       </div>
       <div class="egg-turner-status" id="eggTurnerStatus"></div>
-      <div class="alert" id="syncStatus" style="display:none; text-align:center; background:#2196F3;">Syncing logs...</div>
-      <div class="alert" id="storageAlert" style="display:none; text-align:center; background:#f44336;"></div>
+      <div class="ticker" id="syncTicker"></div>
+      <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="uptime-tag" id="uptime">--</div>
+        <div class="countdown-timer" id="countdownTimer">Next: --s</div>
+      </div>
     <div class="alert" id="alertBox"></div>
     <div class="card">
       <div class="info-grid">
@@ -186,6 +190,10 @@ R"webui(  <script>
     let currentTargetTemp = 37.5;
     let currentTargetHumidity = 60.0;
     let lastLiveLogs = [];
+    let logInterval = 10000;
+    let countdownValue = 10;
+    let countdownInterval = null;
+    let syncStartTime = 0;
 
     function initDevices() {
       if (devicesInited) return;
@@ -300,67 +308,106 @@ R"webui(  <script>
       }
     }
 
-    async function syncLogs(bootId, currentSector, absBaseTime) {
+    async function getPendingGap(sinceTimestamp) {
+      if (!logStorageReady || !db) return 0;
+      try {
+        const response = await fetch('/data?since=' + sinceTimestamp + '&limit=201');
+        const data = await response.json();
+        return data.records ? data.records.length : 0;
+      } catch (error) {
+        console.error('Gap check error:', error);
+        return 0;
+      }
+    }
+
+    function showTicker(message) {
+      const ticker = document.getElementById('syncTicker');
+      if (ticker) {
+        ticker.textContent = message;
+        ticker.className = 'ticker show';
+      }
+    }
+
+    function hideTicker() {
+      const ticker = document.getElementById('syncTicker');
+      if (ticker) {
+        ticker.className = 'ticker';
+        ticker.textContent = '';
+      }
+    }
+
+    function startCountdown() {
+      if (countdownInterval) clearInterval(countdownInterval);
+      countdownValue = Math.ceil(logInterval / 1000);
+      updateCountdownDisplay();
+      countdownInterval = setInterval(function() {
+        countdownValue--;
+        if (countdownValue <= 0) countdownValue = Math.ceil(logInterval / 1000);
+        updateCountdownDisplay();
+      }, 1000);
+    }
+
+    function updateCountdownDisplay() {
+      const timer = document.getElementById('countdownTimer');
+      if (timer) {
+        timer.textContent = 'Next: ' + countdownValue + 's';
+      }
+    }
+
+    function stopCountdown() {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+      const timer = document.getElementById('countdownTimer');
+      if (timer) timer.textContent = '';
+    }
+
+    async function syncLogs() {
       if (!logStorageReady || !db || isSyncing) return;
 
-      if (syncBootId !== bootId) {
-        syncBootId = bootId;
-        syncQueue = [];
-      }
-
-      const syncKey = getSyncKey(bootId);
-      let lastSynced = safeGetStorage(syncKey);
-      if (lastSynced === null) {
-        lastSynced = currentSector;
-      } else {
-        lastSynced = parseInt(lastSynced, 10);
-        if (isNaN(lastSynced)) {
-          lastSynced = currentSector;
-        }
-      }
-
-      if (syncQueue.length === 0) {
-        let sector = (lastSynced + 1) % 256;
-        while (sector !== currentSector) {
-          syncQueue.push(sector);
-          sector = (sector + 1) % 256;
-        }
-      }
-
-      if (syncQueue.length === 0) {
-        hideBanner('syncStatus');
-        return;
-      }
-
       isSyncing = true;
-      showBanner('syncStatus', 'Syncing logs...', '#2196F3');
+      syncStartTime = Date.now();
+      let totalSynced = 0;
+      let since = safeGetStorage('lastSyncedTimestamp') || 0;
+      stopCountdown();
 
-      while (syncQueue.length > 0) {
-        const sectorToSync = syncQueue[0];
-        showBanner('syncStatus', 'Syncing... (' + syncQueue.length + ' chunks left)', '#2196F3');
-        try {
-          const response = await fetch('/data?sector=' + sectorToSync);
+      try {
+        while (true) {
+          showTicker('Syncing ' + totalSynced + ' records...');
+
+          const response = await fetch('/data?since=' + since + '&limit=100');
           const data = await response.json();
-          if (data && data.length > 0) {
-            const records = data.map(function(point) {
-              return normalizeLogRecord(point, bootId, absBaseTime);
+
+          if (data.records && data.records.length > 0) {
+            const records = data.records.map(function(point) {
+              return normalizeLogRecord(point, 0, 0);
             });
             await db.logs.bulkPut(records);
+            totalSynced += data.records.length;
+            since = data.lastTimestamp;
+            safeSetStorage('lastSyncedTimestamp', since);
           }
-          safeSetStorage(syncKey, String(sectorToSync));
-          syncQueue.shift();
-        } catch (error) {
-          console.error('Sync error for sector', sectorToSync, error);
-          break;
+
+          if (!data.hasMore) break;
+
+          await new Promise(r => setTimeout(r, 100));
         }
+
+        hideTicker();
+        if (totalSynced > 0) {
+          showTicker(totalSynced + ' records synced');
+          setTimeout(hideTicker, 3000);
+        }
+        startCountdown();
+      } catch (error) {
+        console.error('Sync error:', error);
+        showTicker('Sync failed');
+        setTimeout(hideTicker, 3000);
+        startCountdown();
       }
 
       isSyncing = false;
-      if (syncQueue.length === 0) {
-        hideBanner('syncStatus');
-      } else {
-        showBanner('syncStatus', 'Sync paused. Retrying...', '#2196F3');
-      }
     }
 
     async function loadLogsForCharts() {
@@ -435,9 +482,28 @@ R"webui(  <script>
           await db.logs.bulkPut(lastLiveLogs);
         }
 
-        if (data.bootId !== undefined && data.currentSector !== undefined) {
-          await syncLogs(data.bootId, data.currentSector, absBaseTime);
+        let lastDexieTimestamp = safeGetStorage('lastSyncedTimestamp') || 0;
+        if (lastDexieTimestamp === 0 && logStorageReady && db) {
+          try {
+            const latestLog = await db.logs.orderBy('timestamp').last();
+            if (latestLog) lastDexieTimestamp = latestLog.timestamp;
+          } catch (e) { console.error('Get latest log error:', e); }
+        }
+
+        const gap = await getPendingGap(lastDexieTimestamp);
+
+        if (gap > 200) {
+          stopCountdown();
+          await syncLogs();
           await cleanupOldLogs();
+        } else {
+          if (data.bootId !== undefined && data.currentSector !== undefined) {
+            await syncLogs();
+            await cleanupOldLogs();
+          }
+          if (!isSyncing && countdownInterval === null) {
+            startCountdown();
+          }
         }
 
         const logs = await loadLogsForCharts();
@@ -751,6 +817,17 @@ R"webui(  <script>
       });
     }
 
+    function loadLogInterval() {
+      fetch('/mock/api').then(function(r) { return r.json(); }).then(function(d) {
+        if (d.logInterval) {
+          logInterval = parseInt(d.logInterval, 10);
+          startCountdown();
+          if (window.updateDataInterval) clearInterval(window.updateDataInterval);
+          window.updateDataInterval = setInterval(updateData, logInterval);
+        }
+      }).catch(function(e) { console.error('Load log interval error:', e); });
+    }
+
     async function bootApp() {
       initDevices();
       setupPinchZoom('tempChart', 'temp');
@@ -766,7 +843,7 @@ R"webui(  <script>
           updateData();
         }
       }, 2000);
-      setInterval(updateData, 2000);
+      loadLogInterval();
     }
 
     bootApp();
