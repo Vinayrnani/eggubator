@@ -1,3 +1,4 @@
+#line 1 "/root/termux_home/eggubator/web_ui.h"
 #ifndef WEB_UI_H
 #define WEB_UI_H
 
@@ -859,6 +860,7 @@ const char WEB_MOCK_HTML[] PROGMEM = R"webui(
 <head>
   <title>Settings - EGGubator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); min-height: 100vh; }
@@ -1032,8 +1034,30 @@ const char WEB_MOCK_HTML[] PROGMEM = R"webui(
     </div>
     <div class="footer">EGGubator v<span id="version">--</span></div>
   </div>
-  <script>
-    let userEditing = false;
+   <script>
+     let userEditing = false;
+     window.db = null;
+     let logStorageReady = false;
+
+     function initMockLogStorage() {
+         if (!window.indexedDB) {
+             return;
+         }
+         if (!window.Dexie) {
+             return;
+         }
+         
+         try {
+             window.db = new Dexie('EggubatorDB');
+             window.db.version(1).stores({
+                 logs: '[bootId+t], timestamp'
+             });
+             return window.db.open();
+         } catch (error) {
+             console.error('Dexie initialization error:', error);
+             window.db = null;
+         }
+     }
     function updateData() {
       fetch('/data').then(r => r.json()).then(d => {
         document.getElementById('version').textContent = d.version;
@@ -1125,9 +1149,17 @@ const char WEB_MOCK_HTML[] PROGMEM = R"webui(
       const h = document.getElementById('mockHum').value;
       fetch('/mock/api?temp=' + t + '&hum=' + h).then(r => r.text()).then(msg => { updateData(); }).catch(e => console.error(e));
     }
-    setInterval(updateData, 3000);
-    loadMockValues();
-    updateData();
+    initMockLogStorage().then(() => {
+      setInterval(updateData, 3000);
+      loadMockValues();
+      updateData();
+    }).catch(err => {
+      console.error('Failed to init storage:', err);
+      // Continue anyway - we can still show live data
+      setInterval(updateData, 3000);
+      loadMockValues();
+      updateData();
+    });
   </script>
 </body>
 </html>

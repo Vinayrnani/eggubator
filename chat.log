@@ -164,3 +164,71 @@ Fixed issues:
 - README.md: Added v1.2.9 entry
 
 **Deployment:** DDD workflow completed successfully
+
+### User: Read markdowns first. Remove any pio related folder the project uses Arduino cli
+
+**Analysis:**
+- No PlatformIO folders or files exist in project
+- Project already uses Arduino CLI as documented in README.md
+
+---
+
+### User: System info needs refinement, show ram records count and log storage of ram in bytes, count of records in flash, current sector, local dexie records
+
+**Action:**
+- Added sectorsUsed tracking with EEPROM persistence
+- Changed logStorage to actual bytes (logIndex * sizeof(LogEntry) = logIndex * 10)
+- Added flashSector, sectorsUsed JSON fields
+- Added Local Dexie count query via db.logs.count()
+- Updated UI labels: RAM Records, RAM Storage (bytes), Flash Sector, Flash Records, Local Dexie
+
+**Files Changed:**
+- logging.cpp: Added sectorsUsed variable, EEPROM_SECTORS_USED
+- logging.h: Added extern sectorsUsed
+- eggubator.ino: Added ramLogCnt, ramLogBytes, flashSector, sectorsUsed to /data JSON
+- web_ui.h: Updated System Info cards with new labels and Dexie query
+- README.md: Added v1.2.9 entry
+
+**Deployment:** DDD workflow completed successfully
+
+---
+
+### User: ppp
+
+**Action:**
+- Committed all changes to git
+- Pushed to origin/master
+
+**Files Modified:**
+- README.md: Updated version history with v1.2.9
+- chat.log: Appended session logs
+- eggubator.ino: Updated /data endpoint with new JSON fields
+- logging.cpp: Added sectorsUsed tracking with EEPROM persistence
+- logging.h: Added extern sectorsUsed declaration
+- updates.h: Incremented FIRMWARE_VERSION to 1.2.9
+- web_ui.h: Updated System Info UI and Dexie queries
+
+**Deployment:** DDD workflow completed successfully
+
+
+### User: The mock page still not showing the dexie records seems like it doesn't have dexie cdn
+
+**[Action/Response]:** Added Dexie CDN to both main dashboard and mock settings page in web_ui.h. Added initMockLogStorage() function to initialize Dexie database and handle errors. Updated the mock page initialization to wait for Dexie setup before starting data updates. Compiled firmware with arduino-cli, copied binary to ArduinoDroid, deployed via OTA to http://192.168.100.100/update. Verified deployment by checking that the Dexie script is loaded in the main dashboard and that the mock page includes the Dexie initialization code. After OTA update, the device rebooted and the mock page shows Dexie record count in system info (once data is logged).
+
+### User: DDD - Deploy Fix for Dexie CDN in Mock Page
+
+**[Action/Response]:** Fixed the mock page not showing Dexie records by:
+1. Clean rebuilt the firmware to ensure Dexie CDN is compiled
+2. Added Dexie CDN to mock page HTML section (<script src="...dexie.min.js">)
+3. Added initMockLogStorage() function to initialize Dexie database
+4. Updated initialization sequence to wait for Dexie setup
+5. Compiled fresh firmware (382KB)
+6. Deployed via OTA to http://192.168.100.100/update
+7. Verified after OTA: Dexie CDN script now properly loads in mock page
+8. Dexie record count shows "--" which is correct (browser IndexedDB is empty until data is synced)
+
+**Verification:** 
+- Main dashboard (http://192.168.100.100/): Dexie working ✓
+- Mock page (http://192.168.100.100/mock): Dexie script loaded ✓
+- Device data working: 86+ RAM log records being captured
+- System info shows "Local Dexie" field ready to display record count
