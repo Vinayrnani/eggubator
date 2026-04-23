@@ -180,6 +180,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.3.0** | Chart.js integration: Replace custom canvas charts with Chart.js library from CDN, added data downsampling for performance |
 | **1.2.9** | System info: RAM records count, RAM storage (bytes), flash sector, sectors used, local Dexie count |
 | **1.2.8** | Log buffer reduced: 500 → 400 entries (~1.2KB RAM savings) |
 | **1.2.7** | Dexie library loaded from CDN instead of embedded (~26KB flash savings) |

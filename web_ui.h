@@ -3,6 +3,7 @@
 #define WEB_UI_H
 
 #define DEXIE_ASSET_URL "https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"
+#define CHARTJS_ASSET_URL "https://cdn.jsdelivr.net/npm/chart.js"
 
 const char WEB_ROOT_HTML[] PROGMEM =
 R"webui(
@@ -142,17 +143,17 @@ input:checked + .slider:before { transform: translateX(26px); }
     </div>
     <div class="card">
       <div class="label">Temperature</div>
-      <div class="chart-wrap"><canvas id="tempChart" width="400" height="120"></canvas></div>
+      <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
       <div class="time-label" id="tempTime">--</div>
     </div>
     <div class="card">
       <div class="label">Humidity</div>
-      <div class="chart-wrap"><canvas id="humChart" width="400" height="120"></canvas></div>
+      <div class="chart-wrap"><canvas id="humChart"></canvas></div>
       <div class="time-label" id="humTime">--</div>
     </div>
     <div class="card">
       <div class="label">Controls</div>
-      <div class="chart-wrap"><canvas id="ctrlChart" width="400" height="120"></canvas></div>
+      <div class="chart-wrap"><canvas id="ctrlChart"></canvas></div>
       <div class="time-label" id="ctrlTime">--</div>
       <div class="legend" id="ctrlLegend"></div>
     </div>
@@ -160,6 +161,7 @@ input:checked + .slider:before { transform: translateX(26px); }
   </div>
 )webui"
 "<script src=\"" DEXIE_ASSET_URL "\"></script>\n"
+"<script src=\"" CHARTJS_ASSET_URL "\"></script>\n"
 R"webui(  <script>
     const DB_NAME = 'EggubatorDB';
     const LOG_STORE_SCHEMA = '[bootId+t], timestamp';
@@ -195,6 +197,9 @@ R"webui(  <script>
     let countdownValue = 10;
     let countdownInterval = null;
     let syncStartTime = 0;
+    let tempChart = null;
+    let humChart = null;
+    let ctrlChart = null;
 
     function initDevices() {
       if (devicesInited) return;
@@ -544,251 +549,63 @@ if (!window.Dexie) {
       return Math.round(ms / 86400000) + 'd';
     }
 
+    function initCharts() {
+      var commonOpts = { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' } }, scales: { x: { type: 'linear', display: true, grid: { color: '#eee' }, ticks: { color: '#999', font: { size: 9 }, maxTicksLimit: 5, callback: function(v) { return formatTimeLabel(v); } } }, y: { display: true, grid: { color: '#eee' }, ticks: { color: '#666', font: { size: 9 } } } }, elements: { point: { radius: 0, hitRadius: 10 }, line: { borderWidth: 2, tension: 0.1 } } };
+      tempChart = new Chart(document.getElementById('tempChart'), { type: 'line', data: { datasets: [{ label: 'Temperature', borderColor: '#ff5722', backgroundColor: 'rgba(255,87,34,0.1)', fill: true, data: [] }] }, options: Object.assign({}, commonOpts, { scales: Object.assign({}, commonOpts.scales, { y: Object.assign({}, commonOpts.scales.y, { min: 35, max: 40 }) }) }) });
+      humChart = new Chart(document.getElementById('humChart'), { type: 'line', data: { datasets: [{ label: 'Humidity', borderColor: '#2196F3', backgroundColor: 'rgba(33,150,243,0.1)', fill: true, data: [] }] }, options: Object.assign({}, commonOpts, { scales: Object.assign({}, commonOpts.scales, { y: Object.assign({}, commonOpts.scales.y, { min: 40, max: 80 }) }) }) });
+      document.getElementById('ctrlLegend').innerHTML = ctrlDevices.map(function(d) { return '<div class="legend-item"><div class="legend-dot" style="background:' + d.color + '"></div><span>' + d.name + '</span></div>'; }).join('');
+      ctrlChart = new Chart(document.getElementById('ctrlChart'), { type: 'line', data: { datasets: ctrlDevices.map(function(d) { return { label: d.name, borderColor: d.color, backgroundColor: d.color, stepped: true, data: [] }; }) }, options: Object.assign({}, commonOpts, { scales: Object.assign({}, commonOpts.scales, { y: Object.assign({}, commonOpts.scales.y, { min: 0, max: 1, ticks: { stepSize: 1 } }) }) }) });
+    }
+
+    function downsampleData(data, maxPoints) {
+      if (!data || data.length <= maxPoints) return data;
+      var step = Math.ceil(data.length / maxPoints);
+      var result = [];
+      for (var i = 0; i < data.length; i += step) {
+        var chunk = data.slice(i, Math.min(i + step, data.length));
+        var avgT = 0, avgH = 0, cnt = 0;
+        for (var j = 0; j < chunk.length; j++) { avgT += chunk[j].temp; avgH += chunk[j].hum; cnt++; }
+        var mid = chunk[Math.floor(chunk.length / 2)];
+        result.push({ t: mid.t, temp: avgT / cnt, hum: avgH / cnt, h: mid.h, a: mid.a, f: mid.f, s: mid.s });
+      }
+      return result;
+    }
+
     function drawTempChart(logData) {
-      const canvas = document.getElementById('tempChart');
-      const ctx = canvas.getContext('2d');
-      const width = canvas.width = canvas.offsetWidth;
-      const height = canvas.height = 120;
-      const padL = 35, padR = 10, padT = 10, padB = 25;
-      const plotW = width - padL - padR;
-      const plotH = height - padT - padB;
-      ctx.clearRect(0, 0, width, height);
-      if (!logData || logData.length < 1) return;
-
-      let minT = 50;
-      let maxT = 0;
-      logData.forEach(function(point) {
-        if (point.temp > maxT) maxT = point.temp;
-        if (point.temp < minT) minT = point.temp;
-      });
-      if (maxT - minT < 2) {
-        minT = 35;
-        maxT = 40;
-      }
-      minT = Math.floor(minT - 1);
-      maxT = Math.ceil(maxT + 1);
-
-      const times = logData.map(function(point) { return point.t; });
-      const minTime = times[0];
-      const maxTime = times[times.length - 1];
-      const timeRange = maxTime - minTime || 1;
-
-      ctx.fillStyle = '#666';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'right';
-      const ySteps = 4;
-      for (let i = 0; i <= ySteps; i++) {
-        const value = minT + (maxT - minT) * (ySteps - i) / ySteps;
-        const y = padT + (i / ySteps) * plotH;
-        ctx.fillText(value.toFixed(1), padL - 4, y + 3);
-        ctx.beginPath();
-        ctx.strokeStyle = '#eee';
-        ctx.lineWidth = 1;
-        ctx.moveTo(padL, y);
-        ctx.lineTo(padL + plotW, y);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = '#ff5722';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      logData.forEach(function(point, index) {
-        const x = padL + ((point.t - minTime) / timeRange) * plotW;
-        const y = padT + ((maxT - point.temp) / (maxT - minT)) * plotH;
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-      ctx.stroke();
-
-      ctx.strokeStyle = '#4CAF50';
-      ctx.setLineDash([4, 4]);
-      const targetY = padT + ((maxT - currentTargetTemp) / (maxT - minT)) * plotH;
-      ctx.beginPath();
-      ctx.moveTo(padL, targetY);
-      ctx.lineTo(padL + plotW, targetY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#999';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'center';
-      const xLabels = 5;
-      for (let i = 0; i <= xLabels; i++) {
-        const t = minTime + (timeRange * i / xLabels);
-        const x = padL + (i / xLabels) * plotW;
-        ctx.fillText(formatTimeLabel(t - minTime), x, height - 5);
-      }
-
-      document.getElementById('tempTime').textContent = formatTime(timeRange);
+      if (!tempChart || !logData || logData.length < 1) return;
+      var displayData = downsampleData(logData, 200);
+      var minT = displayData[0].t, maxT = displayData[displayData.length - 1].t;
+      tempChart.data.datasets[0].data = displayData.map(function(p) { return { x: p.t, y: p.temp }; });
+      if (tempChart.data.datasets.length === 1) tempChart.data.datasets.push({ label: 'Target', borderColor: '#4CAF50', borderDash: [4, 4], borderWidth: 1, pointRadius: 0, data: [] });
+      tempChart.data.datasets[1].data = [{ x: minT, y: currentTargetTemp }, { x: maxT, y: currentTargetTemp }];
+      tempChart.options.scales.x.min = minT;
+      tempChart.options.scales.x.max = maxT;
+      tempChart.update('none');
+      document.getElementById('tempTime').textContent = formatTimeLabel(maxT - minT) + (displayData.length < logData.length ? ' (' + logData.length + ' pts)' : '');
     }
 
     function drawHumChart(logData) {
-      const canvas = document.getElementById('humChart');
-      const ctx = canvas.getContext('2d');
-      const width = canvas.width = canvas.offsetWidth;
-      const height = canvas.height = 120;
-      const padL = 35, padR = 10, padT = 10, padB = 25;
-      const plotW = width - padL - padR;
-      const plotH = height - padT - padB;
-      ctx.clearRect(0, 0, width, height);
-      if (!logData || logData.length < 1) return;
-
-      let minH = 100;
-      let maxH = 0;
-      logData.forEach(function(point) {
-        if (point.hum > maxH) maxH = point.hum;
-        if (point.hum < minH) minH = point.hum;
-      });
-      if (maxH - minH < 5) {
-        minH = 40;
-        maxH = 80;
-      }
-      minH = Math.floor(minH - 5);
-      maxH = Math.ceil(maxH + 5);
-
-      const times = logData.map(function(point) { return point.t; });
-      const minTime = times[0];
-      const maxTime = times[times.length - 1];
-      const timeRange = maxTime - minTime || 1;
-
-      ctx.fillStyle = '#666';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'right';
-      const ySteps = 4;
-      for (let i = 0; i <= ySteps; i++) {
-        const value = minH + (maxH - minH) * (ySteps - i) / ySteps;
-        const y = padT + (i / ySteps) * plotH;
-        ctx.fillText(value.toFixed(0), padL - 4, y + 3);
-        ctx.beginPath();
-        ctx.strokeStyle = '#eee';
-        ctx.lineWidth = 1;
-        ctx.moveTo(padL, y);
-        ctx.lineTo(padL + plotW, y);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = '#2196F3';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      logData.forEach(function(point, index) {
-        const x = padL + ((point.t - minTime) / timeRange) * plotW;
-        const y = padT + ((maxH - point.hum) / (maxH - minH)) * plotH;
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-      ctx.stroke();
-
-      ctx.strokeStyle = '#4CAF50';
-      ctx.setLineDash([4, 4]);
-      const targetY = padT + ((maxH - currentTargetHumidity) / (maxH - minH)) * plotH;
-      ctx.beginPath();
-      ctx.moveTo(padL, targetY);
-      ctx.lineTo(padL + plotW, targetY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#999';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'center';
-      const xLabels = 5;
-      for (let i = 0; i <= xLabels; i++) {
-        const t = minTime + (timeRange * i / xLabels);
-        const x = padL + (i / xLabels) * plotW;
-        ctx.fillText(formatTimeLabel(t - minTime), x, height - 5);
-      }
-
-      document.getElementById('humTime').textContent = formatTime(timeRange);
-    }
-
-    function setupPinchZoom(canvasId, key) {
-      const canvas = document.getElementById(canvasId);
-      let startDist = 0;
-      let startScale = 1;
-      canvas.addEventListener('touchstart', function(event) {
-        event.stopPropagation();
-        if (event.touches.length === 2) {
-          startDist = Math.hypot(
-            event.touches[0].clientX - event.touches[1].clientX,
-            event.touches[0].clientY - event.touches[1].clientY
-          );
-          startScale = zoomState[key].scale;
-        }
-      }, { passive: true });
-      canvas.addEventListener('touchmove', function(event) {
-        event.stopPropagation();
-        if (event.touches.length === 2) {
-          const dist = Math.hypot(
-            event.touches[0].clientX - event.touches[1].clientX,
-            event.touches[0].clientY - event.touches[1].clientY
-          );
-          zoomState[key].scale = Math.max(1, Math.min(10, startScale * (dist / startDist)));
-          updateData();
-        }
-      }, { passive: true });
+      if (!humChart || !logData || logData.length < 1) return;
+      var displayData = downsampleData(logData, 200);
+      var minT = displayData[0].t, maxT = displayData[displayData.length - 1].t;
+      humChart.data.datasets[0].data = displayData.map(function(p) { return { x: p.t, y: p.hum }; });
+      if (humChart.data.datasets.length === 1) humChart.data.datasets.push({ label: 'Target', borderColor: '#4CAF50', borderDash: [4, 4], borderWidth: 1, pointRadius: 0, data: [] });
+      humChart.data.datasets[1].data = [{ x: minT, y: currentTargetHumidity }, { x: maxT, y: currentTargetHumidity }];
+      humChart.options.scales.x.min = minT;
+      humChart.options.scales.x.max = maxT;
+      humChart.update('none');
+      document.getElementById('humTime').textContent = formatTimeLabel(maxT - minT) + (displayData.length < logData.length ? ' (' + logData.length + ' pts)' : '');
     }
 
     function drawCtrlChart(logData) {
-      const canvas = document.getElementById('ctrlChart');
-      const ctx = canvas.getContext('2d');
-      const width = canvas.width = canvas.offsetWidth;
-      const height = canvas.height = 120;
-      const padL = 35, padR = 10, padT = 10, padB = 25;
-      const plotW = width - padL - padR;
-      const plotH = height - padT - padB;
-      ctx.clearRect(0, 0, width, height);
-      if (!logData || logData.length < 1) return;
-
-      const times = logData.map(function(point) { return point.t; });
-      const minTime = times[0];
-      const maxTime = times[times.length - 1];
-      const timeRange = maxTime - minTime || 1;
-      const scale = zoomState.ctrl.scale;
-      const viewW = plotW / scale;
-      const offset = zoomState.ctrl.offset * (plotW - viewW);
-
-      const legend = document.getElementById('ctrlLegend');
-      legend.innerHTML = ctrlDevices.map(function(device) {
-        return '<div class="legend-item"><div class="legend-dot" style="background:' + device.color + '"></div><span>' + device.name + '</span></div>';
-      }).join('');
-
-      const rowH = plotH / 4;
-      ctrlDevices.forEach(function(device, index) {
-        ctx.beginPath();
-        ctx.strokeStyle = device.color;
-        ctx.lineWidth = 2;
-        let started = false;
-        logData.forEach(function(point) {
-          const x = padL + ((point.t - minTime) / timeRange) * viewW + offset;
-          if (x < padL || x > padL + plotW) return;
-          const value = point[device.key] ? 1 : 0;
-          const y = padT + (index + 0.5) * rowH + (1 - value) * rowH * 0.4;
-          if (started) {
-            ctx.lineTo(x, y);
-          } else {
-            ctx.moveTo(x, y);
-            started = true;
-          }
-        });
-        ctx.stroke();
-      });
-
-      ctx.fillStyle = '#999';
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'center';
-      const xLabels = 5;
-      for (let i = 0; i <= xLabels; i++) {
-        const t = minTime + (timeRange * i / xLabels);
-        const x = padL + (i / xLabels) * plotW;
-        ctx.fillText(formatTimeLabel(t - minTime), x, height - 5);
-      }
-
-      document.getElementById('ctrlTime').textContent = formatTime(timeRange);
+      if (!ctrlChart || !logData || logData.length < 1) return;
+      var displayData = downsampleData(logData, 200);
+      var minT = displayData[0].t, maxT = displayData[displayData.length - 1].t;
+      ctrlDevices.forEach(function(d, i) { ctrlChart.data.datasets[i].data = displayData.map(function(p) { return { x: p.t, y: p[d.key] ? 1 : 0 }; }); });
+      ctrlChart.options.scales.x.min = minT;
+      ctrlChart.options.scales.x.max = maxT;
+      ctrlChart.update('none');
+      document.getElementById('ctrlTime').textContent = formatTimeLabel(maxT - minT);
     }
 
     function toggleDeviceMode(device) {
@@ -832,9 +649,7 @@ if (!window.Dexie) {
 
     async function bootApp() {
       initDevices();
-      setupPinchZoom('tempChart', 'temp');
-      setupPinchZoom('humChart', 'hum');
-      setupPinchZoom('ctrlChart', 'ctrl');
+      initCharts();
       window.addEventListener('resize', function() {
         updateData();
       });
