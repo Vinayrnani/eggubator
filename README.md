@@ -180,6 +180,7 @@ esptool.py --chip esp8266 --port /dev/ttyUSB0 --baud 115200 write_flash -z \
 
 | Version | Changes |
 |---------|---------|
+| **1.3.1** | Fix: sync ticker shows before syncing, /data endpoint retrieves RAM+flash logs with since param (limitation: limit ≤200 works reliably), timestamps use unsigned long to handle large flash values properly |
 | **1.3.0** | Chart.js integration: Replace custom canvas charts with Chart.js library from CDN, added data downsampling for performance |
 | **1.2.9** | System info: RAM records count, RAM storage (bytes), flash sector, sectors used, local Dexie count |
 | **1.2.8** | Log buffer reduced: 500 → 400 entries (~1.2KB RAM savings) |

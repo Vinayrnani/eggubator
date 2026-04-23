@@ -501,13 +501,10 @@ if (!window.Dexie) {
 
         if (gap > 200) {
           stopCountdown();
+          showTicker('Syncing ' + gap + ' records...');
           await syncLogs();
           await cleanupOldLogs();
         } else {
-          if (gap > 200 && data.bootId !== undefined && data.currentSector !== undefined) {
-            await syncLogs();
-            await cleanupOldLogs();
-          }
           if (!isSyncing && countdownInterval === null) {
             startCountdown();
           }

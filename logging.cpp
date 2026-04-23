@@ -88,6 +88,54 @@ void getLogDataForWeb(String& json) {
   }
 }
 
+void getRamLogsSince(unsigned long sinceTimestamp, int limit, String& recordsJson, unsigned long& lastTs, bool& hasMore) {
+  recordsJson = "[";
+  bool first = true;
+  int count = 0;
+  lastTs = sinceTimestamp;
+  
+  int startIdx = logFull ? logIndex : 0;
+  int totalCount = logFull ? MAX_LOG_ENTRIES : logIndex;
+  
+  for (int i = 0; i < totalCount; i++) {
+    int idx = (startIdx + i) % MAX_LOG_ENTRIES;
+    if (logBuffer[idx].timestamp <= sinceTimestamp) continue;
+    
+    float tempVal = logBuffer[idx].temp / 10.0;
+    float humVal = logBuffer[idx].hum / 10.0;
+    bool h = logBuffer[idx].states & STATE_HEATER;
+    bool a = logBuffer[idx].states & STATE_ATOMIZER;
+    bool f = logBuffer[idx].states & STATE_FAN;
+    bool s = logBuffer[idx].states & STATE_SERVO;
+    
+    if (!first) recordsJson += ",";
+    recordsJson += "{\"t\":" + String(logBuffer[idx].timestamp) +
+           ",\"temp\":" + String(tempVal, 1) +
+           ",\"hum\":" + String(humVal, 1) +
+           ",\"h\":" + String(h ? "true" : "false") +
+           ",\"a\":" + String(a ? "true" : "false") +
+           ",\"f\":" + String(f ? "true" : "false") +
+           ",\"s\":" + String(s ? "true" : "false") + "}";
+    first = false;
+    
+    lastTs = logBuffer[idx].timestamp;
+    count++;
+    
+    if (count >= limit) {
+      hasMore = true;
+      recordsJson += "]";
+      return;
+    }
+  }
+  
+  hasMore = false;
+  if (count == 0) {
+    recordsJson = "[]";
+  } else {
+    recordsJson += "]";
+  }
+}
+
 void getFlashLogDataForWeb(int sector, String& json) {
   if (sector < 0 || sector >= LOG_SECTOR_COUNT) {
     json += "[]";
@@ -132,7 +180,7 @@ void getFlashLogDataForWeb(int sector, String& json) {
   delete[] tempBuf;
 }
 
-void getFlashLogsSince(int sinceTimestamp, int limit, String& recordsJson, int& lastTs, bool& hasMore) {
+void getFlashLogsSince(unsigned long sinceTimestamp, int limit, String& recordsJson, unsigned long& lastTs, bool& hasMore) {
   recordsJson = "[";
   bool first = true;
   int count = 0;
@@ -146,7 +194,7 @@ void getFlashLogsSince(int sinceTimestamp, int limit, String& recordsJson, int& 
     
     for (int i = 0; i < 100; i++) {
       if (tempBuf[i].timestamp == 0xFFFFFFFF) break;
-      if ((int)tempBuf[i].timestamp <= sinceTimestamp) continue;
+      if (tempBuf[i].timestamp <= sinceTimestamp) continue;
       
       float tempVal = tempBuf[i].temp / 10.0;
       float humVal = tempBuf[i].hum / 10.0;
@@ -177,7 +225,11 @@ void getFlashLogsSince(int sinceTimestamp, int limit, String& recordsJson, int& 
   }
   
   hasMore = false;
-  recordsJson += "]";
+  if (count == 0) {
+    recordsJson = "[]";
+  } else {
+    recordsJson += "]";
+  }
 }
 
 bool shouldSaveToFlash() {

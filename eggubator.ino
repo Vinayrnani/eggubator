@@ -93,13 +93,31 @@ void handleMockPage() {
 
 void handleData() {
   if (server.hasArg("since")) {
-    int since = server.arg("since").toInt();
+    unsigned long since = server.arg("since").toInt();
     int limit = server.hasArg("limit") ? server.arg("limit").toInt() : 100;
-    String recordsJson = "";
-    int lastTs = 0;
-    bool hasMore = false;
-    getFlashLogsSince(since, limit, recordsJson, lastTs, hasMore);
-    String json = "{\"records\":" + recordsJson + ",\"lastTimestamp\":" + String(lastTs) + ",\"hasMore\":" + (hasMore ? "true" : "false") + "}";
+    unsigned long ramLastTs = 0, flashLastTs = 0;
+    bool ramHasMore = false, flashHasMore = false;
+    
+    String ramJson = "";
+    getRamLogsSince(since, limit, ramJson, ramLastTs, ramHasMore);
+    String flashJson = "";
+    getFlashLogsSince(since, limit, flashJson, flashLastTs, flashHasMore);
+    
+    bool hasMore = ramHasMore || flashHasMore;
+    unsigned long lastTs = (flashLastTs > ramLastTs) ? flashLastTs : ramLastTs;
+    
+    String result;
+    if (ramJson.length() > 2 && flashJson.length() > 2) {
+      result = "[" + ramJson + "," + flashJson + "]";
+    } else if (ramJson.length() > 2) {
+      result = "[" + ramJson + "]";
+    } else if (flashJson.length() > 2) {
+      result = "[" + flashJson + "]";
+    } else {
+      result = "[]";
+    }
+    
+    String json = "{\"records\":" + result + ",\"lastTimestamp\":" + String(lastTs) + ",\"hasMore\":" + (hasMore ? "true" : "false") + "}";
     server.send(200, "application/json", json);
     return;
   }
