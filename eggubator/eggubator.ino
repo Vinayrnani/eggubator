@@ -31,6 +31,7 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 
 // Configurable timing (can be changed via web)
 unsigned long LOG_INTERVAL = 10000;
+unsigned long SAVE_FLASH_INTERVAL = 7200000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 unsigned long PULSE_ON_TIME = 2000;  // Atomizer pulse ON time (2 sec default)
 float cpuUtil = 0;  // CPU utilization placeholder
@@ -91,6 +92,44 @@ void handleMockPage() {
 }
 
 void handleData() {
+  if (server.hasArg("since")) {
+    unsigned long since = server.arg("since").toInt();
+    int limit = server.hasArg("limit") ? server.arg("limit").toInt() : 100;
+    unsigned long ramLastTs = 0, flashLastTs = 0;
+    bool ramHasMore = false, flashHasMore = false;
+    
+    String ramJson = "";
+    getRamLogsSince(since, limit, ramJson, ramLastTs, ramHasMore);
+    String flashJson = "";
+    getFlashLogsSince(since, limit, flashJson, flashLastTs, flashHasMore);
+    
+    bool hasMore = ramHasMore || flashHasMore;
+    unsigned long lastTs = (flashLastTs > ramLastTs) ? flashLastTs : ramLastTs;
+    
+    String result;
+    if (ramJson.length() > 2 && flashJson.length() > 2) {
+      result = "[" + ramJson + "," + flashJson + "]";
+    } else if (ramJson.length() > 2) {
+      result = "[" + ramJson + "]";
+    } else if (flashJson.length() > 2) {
+      result = "[" + flashJson + "]";
+    } else {
+      result = "[]";
+    }
+    
+    String json = "{\"records\":" + result + ",\"lastTimestamp\":" + String(lastTs) + ",\"hasMore\":" + (hasMore ? "true" : "false") + "}";
+    server.send(200, "application/json", json);
+    return;
+  }
+  
+  if (server.hasArg("sector")) {
+    int s = server.arg("sector").toInt();
+    String json = "";
+    getFlashLogDataForWeb(s, json);
+    server.send(200, "application/json", json);
+    return;
+  }
+
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
   int hours = (uptimeSec % 86400) / 3600;
@@ -100,7 +139,7 @@ void handleData() {
   if (days > 0) uptimeStr += String(days) + "d ";
   uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
   
-  String json = "{\"temperature\":" + String(currentTemp) +
+String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"humidity\":" + String(currentHumidity) +
                 ",\"heater\":" + String(heaterState ? "true" : "false") +
                 ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
@@ -109,7 +148,7 @@ void handleData() {
                 ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
                 ",\"uptime\":\"" + uptimeStr + "\"" +
                 ",\"mock\":" + String(useMockSensor ? "true" : "false") +
-                ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
+                 ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                 ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
                 ",\"heaterMode\":" + String(heaterMode) +
                 ",\"atomizerMode\":" + String(atomizerMode) +
@@ -117,12 +156,18 @@ void handleData() {
                 ",\"servoMode\":" + String(servoMode) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHumidity\":" + String(TARGET_HUMIDITY) +
+                ",\"ramLogCnt\":" + String(logIndex) +
+                ",\"ramLogBytes\":" + String(logIndex * sizeof(LogEntry)) +
+                ",\"flashSector\":" + String(currentSector) +
+                ",\"sectorsUsed\":" + String(sectorsUsed) +
                 ",\"bootId\":" + String(bootId) +
                 ",\"uptime_ms\":" + String(millis()) +
-                ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"currentSector\":" + String(currentSector) +
+",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"heapTotal\":81992" +
                 ",\"cpu\":" + String(cpuUtil) +
                 ",\"flashSize\":" + String(ESP.getFlashChipSize()) +
+                ",\"flashTotal\":4194304" +
                 "}";
   getLogDataForWeb(json);
   json += "}";
@@ -213,6 +258,11 @@ void handleMockSensor() {
     LOG_INTERVAL = val;
     saveSettings();
     server.send(200, "text/plain", "Log interval set to " + String(val/1000) + "s");
+  } else if (server.hasArg("saveFlashInterval")) {
+    unsigned long val = server.arg("saveFlashInterval").toInt();
+    SAVE_FLASH_INTERVAL = val;
+    saveSettings();
+    server.send(200, "text/plain", "Save to Flash interval set to " + String(val/60000) + "min");
   } else if (server.hasArg("eggTurnInterval")) {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
@@ -242,6 +292,7 @@ void handleMockSensor() {
                   ",\"temp\":" + String(mockTemp) + 
                   ",\"hum\":" + String(mockHum) +
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
+                  ",\"saveFlashInterval\":" + String(SAVE_FLASH_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
     server.send(200, "application/json", json);
@@ -501,6 +552,10 @@ void loop() {
   if (millis() - lastLogTime >= LOG_INTERVAL) {
     logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
     lastLogTime = millis();
+  }
+
+  if (shouldSaveToFlash()) {
+    saveLogsToFlash();
   }
 
   if (servoEnabled) {

@@ -3,7 +3,9 @@
 
 #include <ESP8266WiFi.h>
 #include <Arduino.h>
-#include "config.h"
+
+#define WIFI_SSID "Sweet Home"
+#define WIFI_PASSWORD "dishoom1234"
 
 void connectWiFi() {
   Serial.println();

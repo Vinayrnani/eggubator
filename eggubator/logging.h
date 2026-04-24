@@ -2,6 +2,7 @@
 #define LOGGING_H
 
 #include <Arduino.h>
+#include <EEPROM.h>
 
 struct LogEntry {
   uint32_t timestamp;
@@ -11,22 +12,34 @@ struct LogEntry {
   uint8_t servoPos; // servo position (0-180)
 };
 
+#define MAX_LOG_ENTRIES 400
+#define LOG_SECTOR_COUNT 256
+#define SECTOR_SIZE 4096
+#define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
+#define SECTOR_THRESHOLD 380
+
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
 #define STATE_FAN       0x04
 #define STATE_SERVO     0x08
 
-extern LogEntry logBuffer[];
+extern LogEntry logBuffer[MAX_LOG_ENTRIES];
 extern int logIndex;
 extern bool logFull;
 extern unsigned long lastLogTime;
+extern unsigned long lastSaveFlashTime;
+extern int currentSector;
+extern int sectorsUsed;
 
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
 void getLogDataForWeb(String& json);
+void getRamLogsSince(unsigned long sinceTimestamp, int limit, String& recordsJson, unsigned long& lastTs, bool& hasMore);
+void getFlashLogDataForWeb(int sector, String& json);
+void getFlashLogsSince(unsigned long sinceTimestamp, int limit, String& recordsJson, unsigned long& lastTs, bool& hasMore);
+bool shouldSaveToFlash();
+void saveLogsToFlash();
 void clearLogs();
-
-// Settings persistence (moved to logging.cpp but used via these helpers)
 void loadSettings();
 void saveSettings();
 uint32_t byteRead(int addr);

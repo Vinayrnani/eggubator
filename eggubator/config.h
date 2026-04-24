@@ -24,17 +24,20 @@ extern unsigned long PULSE_ON_TIME;
 #define PULSE_OFF_TIME 10000
 #define FAN_EXTEND_TIME 5000
 extern unsigned long LOG_INTERVAL;
+extern unsigned long SAVE_FLASH_INTERVAL;
 extern unsigned long EGG_TURN_INTERVAL;
 #define EGG_TURN_DURATION 10000      // 10 seconds
 #define SERVO_CENTER 90
 #define SERVO_ANGLE 45
 
 // Storage
-#define MAX_LOG_ENTRIES 500          // RAM capacity (~6KB)
+#define MAX_LOG_ENTRIES 400          // RAM capacity (~4KB)
+#define LOG_SECTOR_COUNT 256         // 1MB = 256 sectors for 15 days
 
 // EEPROM Addresses for Settings
 #define EEPROM_SETTINGS_MAGIC 30
 #define EEPROM_LOG_INTERVAL 31
+#define EEPROM_SAVE_FLASH 35
 #define EEPROM_EGG_TURN 39
 #define EEPROM_PULSE_ON 43
 #define EEPROM_STAGE 47

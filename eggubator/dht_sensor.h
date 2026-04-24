@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 #include <DHT.h>
-#include "config.h"
 
+#define DHTPIN D4
 #define DHTTYPE DHT22
 
 DHT dht(DHTPIN, DHTTYPE);
