@@ -48,7 +48,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(50%); }
     .btn-auto { background: #2196F3; color: white; width: 100%; }
     .target-info { text-align: center; color: #555; font-size: 13px; }
-    canvas { display: block; background: #fafafa; border-radius: 8px; touch-action: none; width: 100%; height: 150px; }
+    .chart-container { position: relative; height: 160px; width: 100%; }
+    canvas { background: #fafafa; border-radius: 8px; touch-action: none; }
     .alert { background: #ff9800; color: white; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: none; text-align: center; }
     .alert.show { display: block; animation: fadeIn 0.3s; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -125,15 +126,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
     <div class="card">
       <div class="label">Temperature</div>
-      <canvas id="tempChart"></canvas>
+      <div class="chart-container"><canvas id="tempChart"></canvas></div>
     </div>
     <div class="card">
       <div class="label">Humidity</div>
-      <canvas id="humChart"></canvas>
+      <div class="chart-container"><canvas id="humChart"></canvas></div>
     </div>
     <div class="card">
       <div class="label">Controls</div>
-      <canvas id="ctrlChart"></canvas>
+      <div class="chart-container"><canvas id="ctrlChart"></canvas></div>
     </div>
     <div class="version">v<span id="version">--</span></div>
   </div>
