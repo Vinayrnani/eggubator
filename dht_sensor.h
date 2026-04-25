@@ -42,6 +42,9 @@ void initDHT() {
 
 void setMockSensor(bool enable) {
   useMockSensor = enable;
+  if (enable) {
+    autoSimMode = false;
+  }
 }
 
 void setMockValues(float temp, float hum) {
