@@ -18,16 +18,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .container { max-width: 800px; margin: 0 auto; padding: 15px; }
     .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
     h1 { color: #1877f2; text-align: center; margin: 0 0 20px 0; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
-    .stat-card { background: #f8f9fa; padding: 15px; border-radius: 10px; text-align: center; }
-    .stat-label { font-size: 14px; color: #65676b; }
-    .stat-value { font-size: 24px; font-weight: bold; margin-top: 5px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .stat-card { background: #f8f9fa; padding: 12px; border-radius: 10px; text-align: center; }
+    .stat-label { font-size: 13px; color: #65676b; }
+    .stat-value { font-size: 20px; font-weight: bold; margin-top: 5px; }
     .on { color: #42b72a; }
     .off { color: #f02849; }
-    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 15px; }
+    .idle { color: #8a8d91; }
     .btn { padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
     .btn-auto { background: #e7f3ff; color: #1877f2; }
-    .btn-off { background: #ffe9ea; color: #f02849; }
     .chart-box { height: 250px; margin-top: 20px; }
     canvas { touch-action: pan-y; }
     .footer { text-align: center; font-size: 12px; color: #8a8d91; margin-top: 20px; }
@@ -66,33 +65,23 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           <div class="stat-label">Atomizer</div>
           <div class="stat-value" id="atomizerStat">--</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">Fan</div>
+          <div class="stat-value" id="fanStat">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Turner</div>
+          <div class="stat-value" id="turnerStat">--</div>
+        </div>
       </div>
     </div>
 
     <div class="card">
-      <h3>Device Controls</h3>
-      <div class="controls">
-        <div>
-          <div style="font-size:12px;margin-bottom:5px">Heater</div>
-          <button id="btn-heater" class="btn" onclick="toggleMode('heater')">AUTO</button>
-        </div>
-        <div>
-          <div style="font-size:12px;margin-bottom:5px">Atomizer</div>
-          <button id="btn-atomizer" class="btn" onclick="toggleMode('atomizer')">AUTO</button>
-        </div>
-        <div>
-          <div style="font-size:12px;margin-bottom:5px">Fan</div>
-          <button id="btn-fan" class="btn" onclick="toggleMode('fan')">AUTO</button>
-        </div>
-        <div>
-          <div style="font-size:12px;margin-bottom:5px">Turner</div>
-          <button id="btn-servo" class="btn" onclick="toggleMode('servo')">AUTO</button>
-        </div>
-      </div>
-      <div style="margin-top:20px; display:flex; gap:10px;">
+      <h3>Incubation Stage</h3>
+      <div style="display:flex; gap:10px;">
         <select id="stageSelect" style="flex:1; padding:8px; border-radius:6px; border:1px solid #ddd;">
-          <option value="incubation">Incubation Stage (Days 1-18)</option>
-          <option value="lockdown">Lockdown Stage (Days 19-21)</option>
+          <option value="incubation">Incubation (Days 1-18)</option>
+          <option value="lockdown">Lockdown (Days 19-21)</option>
         </select>
         <button class="btn btn-auto" onclick="setStage()">Set Stage</button>
       </div>
@@ -127,7 +116,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     let envChart, actChart;
-    let currentModes = {};
 
     function decodeLogs(hex, logCount) {
       if (!hex) return [];
@@ -160,8 +148,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         type: 'line',
         data: {
           datasets: [
-            { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'y' },
-            { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'y1' }
+            { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'y', pointRadius: 0 },
+            { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'y1', pointRadius: 0 }
           ]
         },
         options: {
@@ -185,10 +173,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         type: 'line',
         data: {
           datasets: [
-            { label: 'Heater', borderColor: '#f02849', data: [], stepped: true },
-            { label: 'Atomizer', borderColor: '#1877f2', data: [], stepped: true },
-            { label: 'Fan', borderColor: '#42b72a', data: [], stepped: true },
-            { label: 'Turner', borderColor: '#925e0d', data: [], stepped: true }
+            { label: 'Heater', borderColor: '#f02849', data: [], stepped: true, pointRadius: 0 },
+            { label: 'Atomizer', borderColor: '#1877f2', data: [], stepped: true, pointRadius: 0 },
+            { label: 'Fan', borderColor: '#42b72a', data: [], stepped: true, pointRadius: 0 },
+            { label: 'Turner', borderColor: '#925e0d', data: [], stepped: true, pointRadius: 0 }
           ]
         },
         options: {
@@ -229,17 +217,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         atomizerStat.textContent = d.atomizer ? 'ON' : 'OFF';
         atomizerStat.className = 'stat-value ' + (d.atomizer ? 'on' : 'off');
 
+        const fanStat = document.getElementById('fanStat');
+        fanStat.textContent = d.fan ? 'ON' : 'OFF';
+        fanStat.className = 'stat-value ' + (d.fan ? 'on' : 'off');
+
+        const turnerStat = document.getElementById('turnerStat');
+        turnerStat.textContent = d.servo === 0 ? 'IDLE' : (d.servo === 1 ? 'FORW' : 'REV');
+        turnerStat.className = 'stat-value ' + (d.servo !== 0 ? 'on' : 'idle');
+
         const badge = document.getElementById('stageBadge');
         badge.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage';
         badge.className = 'stage-badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
-
-        ['heater', 'atomizer', 'fan', 'servo'].forEach(key => {
-          const mode = d[key + 'Mode'];
-          const btn = document.getElementById('btn-' + key);
-          btn.textContent = mode === 1 ? 'AUTO' : 'OFF';
-          btn.className = 'btn ' + (mode === 1 ? 'btn-auto' : 'btn-off');
-          currentModes[key] = mode;
-        });
 
         const logs = decodeLogs(d.logs, d.logCount);
         if (logs.length > 0) {
@@ -255,11 +243,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           actChart.update('none');
         }
       });
-    }
-
-    function toggleMode(dev) {
-      const newMode = currentModes[dev] === 1 ? 'off' : 'auto';
-      fetch(`/control?device=${dev}&mode=${newMode}`).then(() => update());
     }
 
     function setStage() {
