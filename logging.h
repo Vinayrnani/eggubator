@@ -2,7 +2,6 @@
 #define LOGGING_H
 
 #include <Arduino.h>
-#include <EEPROM.h>
 
 struct LogEntry {
   uint32_t timestamp;
@@ -13,9 +12,6 @@ struct LogEntry {
 };
 
 #define MAX_LOG_ENTRIES 500
-#define LOG_SECTOR_COUNT 256
-#define SECTOR_SIZE 4096
-#define LOG_FLASH_SIZE (LOG_SECTOR_COUNT * SECTOR_SIZE)
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
@@ -26,14 +22,10 @@ extern LogEntry logBuffer[MAX_LOG_ENTRIES];
 extern int logIndex;
 extern bool logFull;
 extern unsigned long lastLogTime;
-extern unsigned long lastSaveFlashTime;
 
 void initLogging();
 void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
 void getLogDataForWeb(String& json);
-void getLogsFromFlash(String& json);
-bool shouldSaveToFlash();
-void saveLogsToFlash();
 void clearLogs();
 
 #endif
