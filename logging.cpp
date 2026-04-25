@@ -62,20 +62,26 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   return true;
 }
 
-void getLogHex(String& hex) {
-  int count = logFull ? MAX_LOG_ENTRIES : logIndex;
+int getLogHex(String& hex, int maxEntries, uint32_t sinceTimestamp) {
+  int total = logFull ? MAX_LOG_ENTRIES : logIndex;
   int start = logFull ? logIndex : 0;
+  int sent = 0;
   
-  hex.reserve(count * 14); // 7 bytes * 2 chars per byte
+  hex.reserve(maxEntries * 14);
   
-  for (int i = 0; i < count; i++) {
+  for (int i = 0; i < total && sent < maxEntries; i++) {
     int idx = (start + i) % MAX_LOG_ENTRIES;
-    uint8_t* ptr = (uint8_t*)&logBuffer[idx];
-    for (int j = 0; j < 7; j++) {
-      if (ptr[j] < 16) hex += "0";
-      hex += String(ptr[j], HEX);
+    LogEntry& e = logBuffer[idx];
+    if (e.timestamp > sinceTimestamp) {
+      uint8_t* ptr = (uint8_t*)&e;
+      for (int j = 0; j < 7; j++) {
+        if (ptr[j] < 16) hex += "0";
+        hex += String(ptr[j], HEX);
+      }
+      sent++;
     }
   }
+  return sent;
 }
 
 void clearLogs() {
@@ -84,4 +90,26 @@ void clearLogs() {
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
+}
+
+uint32_t getLatestLogTimestamp() {
+  if (logIndex == 0 && !logFull) return 0;
+  int idx;
+  if (logFull) {
+    idx = (logIndex - 1 + MAX_LOG_ENTRIES) % MAX_LOG_ENTRIES;
+  } else {
+    idx = logIndex - 1;
+  }
+  return logBuffer[idx].timestamp;
+}
+
+uint32_t getOldestLogTimestamp() {
+  if (logIndex == 0 && !logFull) return 0;
+  int idx;
+  if (logFull) {
+    idx = logIndex;
+  } else {
+    idx = 0;
+  }
+  return logBuffer[idx].timestamp;
 }

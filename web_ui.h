@@ -48,7 +48,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     button { background: var(--primary); color: white; border: none; box-shadow: 0 4px 8px rgba(24, 119, 242, 0.25); }
     button:hover { background: var(--primary-dark); transform: scale(1.02); }
     .refresh-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 600; }
-    .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; }
+    .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; appearance: auto; -webkit-appearance: auto; }
     .refresh-control select option { color: black; }
     .chart-box { height: 480px; margin-top: 10px; position: relative; }
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
@@ -65,7 +65,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <select id="refreshRate" onchange="updateRefreshInterval()">
           <option value="1000">1s</option>
           <option value="2000">2s</option>
-          <option value="5000" selected>5s</option>
+          <option value="5000">5s</option>
           <option value="10000">10s</option>
           <option value="30000">30s</option>
         </select>
@@ -131,6 +131,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     let mainChart;
     let refreshTimer;
+    let refreshRate = 5000;
+    let allLogs = [];
+    let latestTs = 0;
+    let initialLoadDone = false;
+    let isLoading = false;
+    let lastUpdateTime = 0;
 
     function decodeLogs(hex, logCount) {
       if (!hex) return [];
@@ -179,53 +185,119 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       });
     }
 
-    function update() {
-      fetch('/data').then(r => r.json()).then(d => {
-        document.getElementById('temp').textContent = d.temperature.toFixed(1) + '°C';
-        document.getElementById('hum').textContent = d.humidity.toFixed(1) + '%';
-        document.getElementById('targetTemp').textContent = d.targetTemp.toFixed(1);
-        document.getElementById('targetHum').textContent = d.targetHum.toFixed(1);
-        document.getElementById('uptime').textContent = d.uptime;
-        
-        const hStat = document.getElementById('heaterStat'); hStat.textContent = d.heater ? 'ON' : 'OFF'; hStat.className = 'stat-value ' + (d.heater ? 'on' : 'off');
-        const aStat = document.getElementById('atomizerStat'); aStat.textContent = d.atomizer ? 'ON' : 'OFF'; aStat.className = 'stat-value ' + (d.atomizer ? 'on' : 'off');
-        const fStat = document.getElementById('fanStat'); fStat.textContent = d.fan ? 'ON' : 'OFF'; fStat.className = 'stat-value ' + (d.fan ? 'on' : 'off');
-        const tStat = document.getElementById('turnerStat'); tStat.textContent = d.servo === 0 ? 'IDLE' : (d.servo === 1 ? 'FORW' : 'REV'); tStat.className = 'stat-value ' + (d.servo !== 0 ? 'on' : 'idle');
-        
-        const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+    function updateLiveData(d) {
+      document.getElementById('temp').textContent = d.temperature.toFixed(1) + '°C';
+      document.getElementById('hum').textContent = d.humidity.toFixed(1) + '%';
+      document.getElementById('targetTemp').textContent = d.targetTemp.toFixed(1);
+      document.getElementById('targetHum').textContent = d.targetHum.toFixed(1);
+      document.getElementById('uptime').textContent = d.uptime;
+      
+      const hStat = document.getElementById('heaterStat'); hStat.textContent = d.heater ? 'ON' : 'OFF'; hStat.className = 'stat-value ' + (d.heater ? 'on' : 'off');
+      const aStat = document.getElementById('atomizerStat'); aStat.textContent = d.atomizer ? 'ON' : 'OFF'; aStat.className = 'stat-value ' + (d.atomizer ? 'on' : 'off');
+      const fStat = document.getElementById('fanStat'); fStat.textContent = d.fan ? 'ON' : 'OFF'; fStat.className = 'stat-value ' + (d.fan ? 'on' : 'off');
+      const tStat = document.getElementById('turnerStat'); tStat.textContent = d.servo === 0 ? 'IDLE' : (d.servo === 1 ? 'FORW' : 'REV'); tStat.className = 'stat-value ' + (d.servo !== 0 ? 'on' : 'idle');
+      
+      const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+    }
 
-        const logs = decodeLogs(d.logs, d.logCount);
-        if (logs.length > 0) {
-          const now = logs[logs.length-1].t;
-          mainChart.data.datasets[0].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
-          mainChart.data.datasets[1].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
-          mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h * 1.5 - 1.5 }));
-          mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.a * 1.5 + 0.5 }));
-          mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.f * 1.5 + 2.5 }));
-          mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.s * 1.0 + 5.5 }));
-          mainChart.update('none');
+    function updateChart() {
+      if (allLogs.length > 0) {
+        const now = allLogs[allLogs.length-1].t;
+        mainChart.data.datasets[0].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
+        mainChart.data.datasets[1].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
+        mainChart.data.datasets[2].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1 : 0 }));
+        mainChart.data.datasets[3].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 1 : 0 }));
+        mainChart.data.datasets[4].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 1 : 0 }));
+        mainChart.data.datasets[5].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.s }));
+        mainChart.update('none');
+      }
+    }
+
+    function fetchNextBatch(since) {
+      fetch('/data?since=' + since + '&count=100').then(r => r.json()).then(d => {
+        const newEntries = decodeLogs(d.logs, d.sentCount);
+        allLogs = allLogs.concat(newEntries);
+        if (d.sentCount >= 100 && allLogs.length < d.totalLogs) {
+          const nextSince = newEntries.length > 0 ? newEntries[newEntries.length-1].t : since;
+          fetchNextBatch(nextSince);
+        } else {
+          initialLoadDone = true;
+          latestTs = allLogs.length > 0 ? allLogs[allLogs.length-1].t : 0;
+          updateChart();
+          updateLiveData(d);
+          isLoading = false;
+          
+          // Start interval only after initial load completes
+          if (!refreshTimer) {
+             refreshTimer = setInterval(update, refreshRate);
+          }
         }
-      });
+      }).catch(() => { isLoading = false; });
+    }
+
+    function fetchAllLogs() {
+      if (isLoading) return;
+      isLoading = true;
+      allLogs = [];
+      fetchNextBatch(0);
+    }
+
+    function fetchNewLogs() {
+      if (isLoading || !initialLoadDone) return;
+      isLoading = true;
+      fetch('/data?since=' + latestTs + '&count=100').then(r => r.json()).then(d => {
+        const newEntries = decodeLogs(d.logs, d.sentCount);
+        if (newEntries.length > 0) {
+          allLogs = allLogs.concat(newEntries);
+          latestTs = newEntries[newEntries.length-1].t;
+        }
+        updateChart();
+        updateLiveData(d);
+        isLoading = false;
+      }).catch(() => { isLoading = false; });
+    }
+
+    function update() {
+      console.log('Update called');
+      const now = Date.now();
+      // Remove debounce for initial load
+      if (initialLoadDone && (now - lastUpdateTime < 1000)) return; 
+      
+      if (!initialLoadDone) {
+        fetchAllLogs();
+      } else {
+        fetchNewLogs();
+      }
+      lastUpdateTime = now;
     }
 
     function updateRefreshInterval() {
       const rate = parseInt(document.getElementById('refreshRate').value);
-      clearInterval(refreshTimer);
+      refreshRate = rate;
+      if (refreshTimer) clearInterval(refreshTimer);
       refreshTimer = setInterval(update, rate);
       fetch(`/mock/api?logInterval=${rate}`);
     }
 
     function setStage() {
       const s = document.getElementById('stageSelect').value;
-      fetch(`/mock/api?stageType=${s}`).then(() => update());
+      fetch(`/mock/api?stageType=${s}`)
+        .then(() => update())
+        .catch(e => console.error("Stage update failed:", e));
     }
 
     initCharts();
-    update();
-    fetch('/mock/api').then(r => r.json()).then(d => {
-       document.getElementById('refreshRate').value = d.logInterval;
-       updateRefreshInterval();
-    });
+    
+    // Set initial refresh rate
+    fetch('/mock/api')
+      .then(r => r.json())
+      .then(d => {
+         refreshRate = d.logInterval;
+         const sel = document.getElementById('refreshRate');
+         if(sel) sel.value = refreshRate;
+         update();
+      })
+      .catch(e => console.error("Initial fetch failed:", e));
   </script>
 </body>
 </html>
@@ -268,34 +340,44 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <div class="card">
-    <h3>Sensor Simulation</h3>
-    <div class="row">
-      <label>Use Mock Sensor</label>
-      <input type="checkbox" id="mockEnable" style="width:24px; height:24px;" onchange="toggle('enable')">
+    <div class="card">
+      <h3>Sensor Simulation</h3>
+      <div class="row">
+        <label>Use Mock Sensor</label>
+        <input type="checkbox" id="mockEnable" style="width:24px; height:24px;" onchange="toggle('enable')">
+      </div>
+      <div class="row">
+        <label>Physics Simulation</label>
+        <input type="checkbox" id="autoSim" style="width:24px; height:24px;" onchange="toggle('autosim')">
+      </div>
+      <div id="mockFields">
+        <div class="row">
+          <label>Mock Temp (°C)</label>
+          <input type="number" id="mTemp" step="0.1" value="37.5">
+        </div>
+        <div class="row">
+          <label>Mock Hum (%)</label>
+          <input type="number" id="mHum" step="0.1" value="60">
+        </div>
+        <button onclick="setMock()">Apply Simulation Values</button>
+      </div>
     </div>
-    <div class="row">
-      <label>Physics Simulation</label>
-      <input type="checkbox" id="autoSim" style="width:24px; height:24px;" onchange="toggle('autosim')">
-    </div>
-    <div class="row">
-      <label>Mock Temp (°C)</label>
-      <input type="number" id="mTemp" step="0.1" value="37.5">
-    </div>
-    <div class="row">
-      <label>Mock Hum (%)</label>
-      <input type="number" id="mHum" step="0.1" value="60">
-    </div>
-    <button onclick="setMock()">Apply Simulation Values</button>
-  </div>
 
   <div class="card">
     <h3>Maintenance</h3>
-    <div class="row">
-      <label>Egg Turn Duration (ms)</label>
-      <input type="number" id="eggTurnInterval" value="7200000">
-    </div>
-    <button onclick="save('eggTurnInterval')">Update Turner Interval</button>
+        <div class="row">
+          <label>Egg Turn Interval</label>
+          <select id="eggTurnInterval" onchange="save('eggTurnInterval')">
+            <option value="1800000">30 min</option>
+            <option value="3600000">1 hour</option>
+            <option value="5400000">1.5 hours</option>
+            <option value="7200000">2 hours</option>
+            <option value="9000000">2.5 hours</option>
+            <option value="10800000">3 hours</option>
+            <option value="12600000">3.5 hours</option>
+            <option value="14400000">4 hours</option>
+          </select>
+        </div>
     <button class="danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -307,32 +389,70 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('ip').textContent = d.ip;
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
-        document.getElementById('logCount').textContent = d.logCount;
+        document.getElementById('logCount').textContent = d.totalLogs;
         document.getElementById('version').textContent = d.version;
         document.getElementById('uptimeSys').textContent = d.uptime;
         document.getElementById('mockEnable').checked = d.mock === 1;
         document.getElementById('autoSim').checked = d.autosim === 1;
         document.getElementById('mTemp').value = d.temperature.toFixed(1);
         document.getElementById('mHum').value = d.humidity.toFixed(1);
+        
+        // Hide/show simulation inputs
+        const mockFields = document.getElementById('mockFields');
+        mockFields.style.display = d.mock ? 'block' : 'none';
       });
       fetch('/mock/api').then(r => r.json()).then(d => {
         document.getElementById('eggTurnInterval').value = d.eggTurnInterval;
       });
     }
+
+    function toggle(key) {
+      const isMock = document.getElementById('mockEnable').checked;
+      const isAuto = document.getElementById('autoSim').checked;
+      
+      if (key === 'enable' && isMock && isAuto) {
+          document.getElementById('autoSim').checked = false;
+      } else if (key === 'autosim' && isAuto && isMock) {
+          document.getElementById('mockEnable').checked = false;
+      }
+      
+      // Update UI visibility immediately
+      document.getElementById('mockFields').style.display = document.getElementById('mockEnable').checked ? 'block' : 'none';
+      
+      const newMock = document.getElementById('mockEnable').checked ? 1 : 0;
+      const newAuto = document.getElementById('autoSim').checked ? 1 : 0;
+      
+      fetch(`/mock/api?enable=${newMock}&autosim=${newAuto}`).then(load);
+    }
     function save(key) {
       const val = document.getElementById(key).value;
       fetch(`/mock/api?${key}=${val}`).then(load);
     }
+    // MOCK_HTML script
     function toggle(key) {
-      const val = document.getElementById(key === 'enable' ? 'mockEnable' : 'autoSim').checked ? 1 : 0;
-      fetch(`/mock/api?${key}=${val}`).then(load);
+      const isMock = document.getElementById('mockEnable').checked;
+      const isAuto = document.getElementById('autoSim').checked;
+      
+      let endpoint = `/mock/api?`;
+      if (key === 'enable') {
+        endpoint += `enable=${isMock ? 1 : 0}`;
+        if(isMock && isAuto) { document.getElementById('autoSim').checked = false; endpoint += `&autosim=0`; }
+      } else {
+        endpoint += `autosim=${isAuto ? 1 : 0}`;
+        if(isAuto && isMock) { document.getElementById('mockEnable').checked = false; endpoint += `&enable=0`; }
+      }
+      fetch(endpoint).then(load);
     }
+    
     function setMock() {
+      if (!document.getElementById('mockEnable').checked) return;
       const t = document.getElementById('mTemp').value;
       const h = document.getElementById('mHum').value;
       fetch(`/mock/api?temp=${t}&hum=${h}`).then(load);
     }
+    
     function reboot() { if(confirm('Reboot device?')) fetch('/reboot'); }
+    
     load();
     setInterval(load, 5000);
   </script>

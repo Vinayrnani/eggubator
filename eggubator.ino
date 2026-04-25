@@ -161,16 +161,36 @@ void handleData() {
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
-                ",\"logCount\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
+                ",\"totalLogs\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
                 ",\"rssi\":" + String(WiFi.RSSI());
 
+  // Parse pagination params
+  uint32_t since = 0;
+  if (server.hasArg("since")) {
+    since = (uint32_t)server.arg("since").toInt();
+  }
+  int count = 100;
+  if (server.hasArg("count")) {
+    count = server.arg("count").toInt();
+    if (count > 100) count = 100;
+    if (count < 1) count = 1;
+  }
+  uint32_t latestTs = getLatestLogTimestamp();
+  uint32_t oldestTs = getOldestLogTimestamp();
+  int totalLogs = logFull ? MAX_LOG_ENTRIES : logIndex;
+  
   String logHex = "";
-  getLogHex(logHex);
-  json += ",\"logs\":\"" + logHex + "\"}";
+  int sentCount = getLogHex(logHex, count, since);
+  
+  json += ",\"totalLogs\":" + String(totalLogs) +
+          ",\"sentCount\":" + String(sentCount) +
+          ",\"latestTs\":" + String(latestTs) +
+          ",\"oldestTs\":" + String(oldestTs) +
+          ",\"logs\":\"" + logHex + "\"}";
   
   server.send(200, "application/json", json);
 }
