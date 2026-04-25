@@ -28,13 +28,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px; width: 100%; }
+    .container { max-width: 940px; margin: 0 auto; padding: 20px; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; }
     .card { background: var(--card-bg); padding: 28px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); margin-bottom: 24px; border: 1px solid rgba(0,0,0,0.05); }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
-    .stat-card { background: #ffffff; padding: 18px; border-radius: 16px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; }
-    .stat-card:hover { transform: translateY(-3px); border-color: var(--primary-soft); background: #fafafa; }
+    .stat-card { background: #ffffff; padding: 18px; border-radius: 16px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-color: var(--primary-soft); }
     .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
     .stat-value { font-size: 24px; font-weight: 800; margin-top: 4px; }
     .target-val { font-size: 11px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
@@ -44,13 +44,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .badge-incubation { background: #e7f3ff; color: var(--primary); }
     .badge-lockdown { background: #fff4e5; color: #d97706; }
-    select, button { padding: 12px 20px; border-radius: 12px; border: 1px solid #e0e4e9; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; outline: none; box-shadow: none; }
-    button { background: var(--primary); color: white; border: none; }
+    select, button { padding: 12px 20px; border-radius: 12px; border: 1px solid #e0e4e9; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; outline: none; }
+    button { background: var(--primary); color: white; border: none; box-shadow: 0 4px 8px rgba(24, 119, 242, 0.25); }
     button:hover { background: var(--primary-dark); transform: scale(1.02); }
     .refresh-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 600; }
     .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; }
     .refresh-control select option { color: black; }
-    .chart-box { position: relative; margin-top: 10px; width: 100%; height: 600px; }
+    .chart-box { height: 480px; margin-top: 10px; position: relative; }
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
     h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
@@ -120,9 +120,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     <div class="card">
       <h3>History & Device Activity</h3>
-      <div class="chart-box">
-        <canvas id="mainChart"></canvas>
-      </div>
+      <div class="chart-box"><canvas id="mainChart"></canvas></div>
     </div>
 
     <div class="footer">
@@ -133,8 +131,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     let mainChart;
     let refreshTimer;
-    let logDataArray = [];
-    let lastTimestamp = 0;
 
     function decodeLogs(hex, logCount) {
       if (!hex) return [];
@@ -160,10 +156,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           datasets: [
             { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'yTemp', pointRadius: 0, borderWidth: 3, tension: 0.35 },
             { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'yHum', pointRadius: 0, borderWidth: 3, tension: 0.35 },
-            { label: 'Heater', borderColor: '#f02849', backgroundColor: 'rgba(240, 40, 73, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Atomizer', borderColor: '#1877f2', backgroundColor: 'rgba(24, 119, 242, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Fan', borderColor: '#42b72a', backgroundColor: 'rgba(66, 183, 42, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Turner', borderColor: '#925e0d', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 2 }
+            { label: 'Heater', borderColor: 'rgba(240, 40, 73, 0.4)', backgroundColor: 'rgba(240, 40, 73, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Atomizer', borderColor: 'rgba(24, 119, 242, 0.4)', backgroundColor: 'rgba(24, 119, 242, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Fan', borderColor: 'rgba(66, 183, 42, 0.4)', backgroundColor: 'rgba(66, 183, 42, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 2 }
           ]
         },
         options: {
@@ -171,43 +167,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: { type: 'linear', title: { display: true, text: 'Time (seconds ago)', font: { weight: 'bold' } }, grid: { color: '#f0f0f0' } },
-            yTemp: { type: 'linear', position: 'left', stack: 'y', stackWeight: 2, title: { display: true, text: 'Temp °C', font: { weight: 'bold' } }, min: 30, max: 45 },
-            yHum: { type: 'linear', position: 'right', stack: 'y', stackWeight: 2, title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, min: 0, max: 100, grid: { display: false } },
-            yAct: { 
-              type: 'linear', position: 'left', stack: 'y', stackWeight: 1, offset: true,
-              min: -1.2, max: 1.2, 
-              ticks: { callback: v => v===1?'ON':(v===-1?'REV':'OFF'), stepSize: 1 },
-              grid: { color: '#f8f8f8' }
-            }
+            yTemp: { type: 'linear', position: 'left', title: { display: true, text: 'Temp °C', font: { weight: 'bold' } }, min: 30, max: 45 },
+            yHum: { type: 'linear', position: 'right', title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, min: 0, max: 100, grid: { display: false } },
+            yAct: { type: 'linear', position: 'right', min: -2, max: 15, display: false, grid: { display: false } }
           },
           plugins: {
-            legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { weight: '700' } } },
-            zoom: {
-              pan: { enabled: true, mode: 'xy' },
-              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  let val = context.parsed.y;
-                  let label = context.dataset.label + ': ';
-                  if (context.datasetIndex > 1) { // Control datasets
-                    if (context.datasetIndex === 5) { // Turner
-                      return label + (val === 1 ? 'FORW' : (val === -1 ? 'REV' : 'IDLE'));
-                    }
-                    return label + (val === 1 ? 'ON' : 'OFF');
-                  }
-                  return label + val.toFixed(1) + (context.datasetIndex === 0 ? '°C' : '%');
-                }
-              }
-            }
+            legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
+            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
           }
         }
       });
     }
 
     function update() {
-      fetch(`/data?since=${lastTimestamp}`).then(r => r.json()).then(d => {
+      fetch('/data').then(r => r.json()).then(d => {
         document.getElementById('temp').textContent = d.temperature.toFixed(1) + '°C';
         document.getElementById('hum').textContent = d.humidity.toFixed(1) + '%';
         document.getElementById('targetTemp').textContent = d.targetTemp.toFixed(1);
@@ -221,24 +194,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         
         const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
 
-        const newEntries = decodeLogs(d.logs, d.logCount);
-        if (newEntries.length > 0) {
-          logDataArray = logDataArray.concat(newEntries);
-          if (logDataArray.length > 1000) {
-            logDataArray = logDataArray.slice(logDataArray.length - 1000);
-          }
-          lastTimestamp = logDataArray[logDataArray.length - 1].t;
-        }
-
-        if (logDataArray.length > 0) {
-          const nowTs = logDataArray[logDataArray.length - 1].t;
-          const xData = logDataArray.map(l => (l.t - nowTs)/1000);
-          mainChart.data.datasets[0].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.temp }));
-          mainChart.data.datasets[1].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.hum }));
-          mainChart.data.datasets[2].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.h }));
-          mainChart.data.datasets[3].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.a }));
-          mainChart.data.datasets[4].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.f }));
-          mainChart.data.datasets[5].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.s }));
+        const logs = decodeLogs(d.logs, d.logCount);
+        if (logs.length > 0) {
+          const now = logs[logs.length-1].t;
+          mainChart.data.datasets[0].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
+          mainChart.data.datasets[1].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
+          mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h * 1.5 - 1.5 }));
+          mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.a * 1.5 + 0.5 }));
+          mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.f * 1.5 + 2.5 }));
+          mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.s * 1.0 + 5.5 }));
           mainChart.update('none');
         }
       });
@@ -253,11 +217,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     function setStage() {
       const s = document.getElementById('stageSelect').value;
-      fetch(`/mock/api?stageType=${s}`).then(() => {
-        // Clear local logs on stage change to avoid confusion, or just let them be.
-        // Actually, better to just update.
-        update();
-      });
+      fetch(`/mock/api?stageType=${s}`).then(() => update());
     }
 
     initCharts();
@@ -282,7 +242,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     .card { background: white; padding: 28px; border-radius: 20px; max-width: 540px; margin: 0 auto 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
     h3 { margin-top: 0; color: #1877f2; font-weight: 800; border-bottom: 2px solid #f0f2f5; padding-bottom: 12px; margin-bottom: 24px; }
     .row { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
-    input, select { padding: 12px; border-radius: 10px; border: 1px solid #e0e4e9; width: 180px; font-weight: 600; }
+    input, select { padding: 12px; border-radius: 10px; border: 1px solid #e0e4e9; width: 140px; font-weight: 600; }
     button { padding: 14px; width: 100%; cursor: pointer; background: #1877f2; color: white; border: none; border-radius: 10px; font-weight: 800; margin-top: 10px; transition: all 0.2s; }
     button:hover { background: #166fe5; }
     .sys-grid { display: grid; grid-template-columns: 1fr; }
@@ -293,7 +253,6 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     label { font-weight: 700; color: #444; font-size: 14px; }
     .danger { background: #f02849 !important; margin-top: 30px; }
     .danger:hover { background: #d02040 !important; }
-    .mock-controls { display: none; margin-top: 15px; border-top: 1px dashed #ddd; padding-top: 15px; }
   </style>
 </head>
 <body>
@@ -303,7 +262,6 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-item"><span>IP Address</span><span id="ip">--</span></div>
       <div class="sys-item"><span>WiFi RSSI</span><span id="rssi">-- dBm</span></div>
       <div class="sys-item"><span>Free RAM</span><span id="heap">-- KB</span></div>
-      <div class="sys-item"><span>Log Buffer RAM</span><span>7.0 KB (fixed)</span></div>
       <div class="sys-item"><span>Active Logs</span><span id="logCount">--</span></div>
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
       <div class="sys-item"><span>Uptime</span><span id="uptimeSys">--</span></div>
@@ -314,42 +272,30 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
     <h3>Sensor Simulation</h3>
     <div class="row">
       <label>Use Mock Sensor</label>
-      <input type="checkbox" id="mockEnable" style="width:24px; height:24px;" onchange="toggleMock()">
+      <input type="checkbox" id="mockEnable" style="width:24px; height:24px;" onchange="toggle('enable')">
     </div>
     <div class="row">
       <label>Physics Simulation</label>
-      <input type="checkbox" id="autoSim" style="width:24px; height:24px;" onchange="toggleSim()">
+      <input type="checkbox" id="autoSim" style="width:24px; height:24px;" onchange="toggle('autosim')">
     </div>
-    
-    <div id="mockControls" class="mock-controls">
-      <div class="row">
-        <label>Mock Temp (°C)</label>
-        <input type="number" id="mTemp" step="0.1" value="37.5">
-      </div>
-      <div class="row">
-        <label>Mock Hum (%)</label>
-        <input type="number" id="mHum" step="0.1" value="60">
-      </div>
-      <button onclick="setMockValues()">Apply Simulation Values</button>
+    <div class="row">
+      <label>Mock Temp (°C)</label>
+      <input type="number" id="mTemp" step="0.1" value="37.5">
     </div>
+    <div class="row">
+      <label>Mock Hum (%)</label>
+      <input type="number" id="mHum" step="0.1" value="60">
+    </div>
+    <button onclick="setMock()">Apply Simulation Values</button>
   </div>
 
   <div class="card">
     <h3>Maintenance</h3>
     <div class="row">
-      <label>Egg Turn Interval</label>
-      <select id="turnInterval">
-        <option value="1800000">30 Minutes</option>
-        <option value="3600000">1 Hour</option>
-        <option value="5400000">1.5 Hours</option>
-        <option value="7200000">2 Hours</option>
-        <option value="9000000">2.5 Hours</option>
-        <option value="10800000">3 Hours</option>
-        <option value="12600000">3.5 Hours</option>
-        <option value="14400000">4 Hours</option>
-      </select>
+      <label>Egg Turn Duration (ms)</label>
+      <input type="number" id="eggTurnInterval" value="7200000">
     </div>
-    <button onclick="saveTurnInterval()">Update Turner Interval</button>
+    <button onclick="save('eggTurnInterval')">Update Turner Interval</button>
     <button class="danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -361,45 +307,31 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('ip').textContent = d.ip;
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
-        document.getElementById('logCount').textContent = d.logTotal;
+        document.getElementById('logCount').textContent = d.logCount;
         document.getElementById('version').textContent = d.version;
         document.getElementById('uptimeSys').textContent = d.uptime;
-        
         document.getElementById('mockEnable').checked = d.mock === 1;
         document.getElementById('autoSim').checked = d.autosim === 1;
         document.getElementById('mTemp').value = d.temperature.toFixed(1);
         document.getElementById('mHum').value = d.humidity.toFixed(1);
-        
-        document.getElementById('mockControls').style.display = d.mock === 1 ? 'block' : 'none';
       });
       fetch('/mock/api').then(r => r.json()).then(d => {
-        document.getElementById('turnInterval').value = d.eggTurnInterval;
+        document.getElementById('eggTurnInterval').value = d.eggTurnInterval;
       });
     }
-
-    function toggleMock() {
-      const enable = document.getElementById('mockEnable').checked;
-      if (enable) document.getElementById('autoSim').checked = false;
-      fetch(`/mock/api?enable=${enable ? 1 : 0}`).then(load);
+    function save(key) {
+      const val = document.getElementById(key).value;
+      fetch(`/mock/api?${key}=${val}`).then(load);
     }
-
-    function toggleSim() {
-      const enable = document.getElementById('autoSim').checked;
-      if (enable) document.getElementById('mockEnable').checked = false;
-      fetch(`/mock/api?autosim=${enable ? 1 : 0}`).then(load);
+    function toggle(key) {
+      const val = document.getElementById(key === 'enable' ? 'mockEnable' : 'autoSim').checked ? 1 : 0;
+      fetch(`/mock/api?${key}=${val}`).then(load);
     }
-
-    function setMockValues() {
+    function setMock() {
       const t = document.getElementById('mTemp').value;
       const h = document.getElementById('mHum').value;
       fetch(`/mock/api?temp=${t}&hum=${h}`).then(load);
     }
-
-    function saveTurnInterval() {
-      const val = document.getElementById('turnInterval').value;
-      fetch(`/mock/api?eggTurnInterval=${val}`).then(load);
-    }
-
     function reboot() { if(confirm('Reboot device?')) fetch('/reboot'); }
     load();
     setInterval(load, 5000);

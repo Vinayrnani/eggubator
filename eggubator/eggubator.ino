@@ -137,11 +137,6 @@ void handleMockPage() {
 }
 
 void handleData() {
-  uint32_t since = 0;
-  if (server.hasArg("since")) {
-    since = strtoul(server.arg("since").c_str(), NULL, 10);
-  }
-
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
   int hours = (uptimeSec % 86400) / 3600;
@@ -151,35 +146,31 @@ void handleData() {
   if (days > 0) uptimeStr += String(days) + "d ";
   uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
   
-  String json = "{";
-  json += "\"temperature\":" + String(currentTemp) + ",";
-  json += "\"humidity\":" + String(currentHumidity) + ",";
-  json += "\"heater\":" + String(heaterState ? 1 : 0) + ",";
-  json += "\"atomizer\":" + String(atomizerState ? 1 : 0) + ",";
-  json += "\"fan\":" + String(fanState ? 1 : 0) + ",";
-  json += "\"servo\":" + String(servoPosition) + ",";
-  json += "\"version\":\"" + String(FIRMWARE_VERSION) + "\",";
-  json += "\"uptime\":\"" + uptimeStr + "\",";
-  json += "\"mock\":" + String(useMockSensor ? 1 : 0) + ",";
-  json += "\"autosim\":" + String(autoSimMode ? 1 : 0) + ",";
-  json += "\"stageLockdown\":" + String(stageLockdown ? 1 : 0) + ",";
-  json += "\"heaterMode\":" + String(heaterMode) + ",";
-  json += "\"atomizerMode\":" + String(atomizerMode) + ",";
-  json += "\"fanMode\":" + String(fanMode) + ",";
-  json += "\"servoMode\":" + String(servoMode) + ",";
+  String json = "{\"temperature\":" + String(currentTemp) +
+                ",\"humidity\":" + String(currentHumidity) +
+                ",\"heater\":" + String(heaterState ? 1 : 0) +
+                ",\"atomizer\":" + String(atomizerState ? 1 : 0) +
+                ",\"fan\":" + String(fanState ? 1 : 0) +
+                ",\"servo\":" + String(servoPosition) +
+                ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
+                ",\"uptime\":\"" + uptimeStr + "\"" +
+                ",\"mock\":" + String(useMockSensor ? 1 : 0) +
+                ",\"autosim\":" + String(autoSimMode ? 1 : 0) +
+                ",\"stageLockdown\":" + String(stageLockdown ? 1 : 0) +
+                ",\"heaterMode\":" + String(heaterMode) +
+                ",\"atomizerMode\":" + String(atomizerMode) +
+                ",\"fanMode\":" + String(fanMode) +
+                ",\"servoMode\":" + String(servoMode) +
+                ",\"logCount\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
+                ",\"targetTemp\":" + String(TARGET_TEMP) +
+                ",\"targetHum\":" + String(TARGET_HUMIDITY) +
+                ",\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
+                ",\"rssi\":" + String(WiFi.RSSI());
 
   String logHex = "";
-  int hexEntries = getLogHex(logHex, since);
-  
-  json += "\"logCount\":" + String(hexEntries) + ",";
-  json += "\"logTotal\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) + ",";
-  json += "\"targetTemp\":" + String(TARGET_TEMP) + ",";
-  json += "\"targetHum\":" + String(TARGET_HUMIDITY) + ",";
-  json += "\"heapFree\":" + String(ESP.getFreeHeap()) + ",";
-  json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-  json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
-  json += "\"logs\":\"" + logHex + "\"";
-  json += "}";
+  getLogHex(logHex);
+  json += ",\"logs\":\"" + logHex + "\"}";
   
   server.send(200, "application/json", json);
 }

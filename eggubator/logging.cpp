@@ -62,29 +62,20 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   return true;
 }
 
-int getLogHex(String& hex, uint32_t since) {
+void getLogHex(String& hex) {
   int count = logFull ? MAX_LOG_ENTRIES : logIndex;
   int start = logFull ? logIndex : 0;
-  int found = 0;
   
-  // Quick check: if the latest log is already seen, return 0
-  if (count > 0) {
-    int latestIdx = (start + count - 1) % MAX_LOG_ENTRIES;
-    if (logBuffer[latestIdx].timestamp <= since) return 0;
-  }
-
+  hex.reserve(count * 14); // 7 bytes * 2 chars per byte
+  
   for (int i = 0; i < count; i++) {
     int idx = (start + i) % MAX_LOG_ENTRIES;
-    if (since == 0 || logBuffer[idx].timestamp > since) {
-      uint8_t* ptr = (uint8_t*)&logBuffer[idx];
-      for (int j = 0; j < 7; j++) {
-        if (ptr[j] < 16) hex += "0";
-        hex += String(ptr[j], HEX);
-      }
-      found++;
+    uint8_t* ptr = (uint8_t*)&logBuffer[idx];
+    for (int j = 0; j < 7; j++) {
+      if (ptr[j] < 16) hex += "0";
+      hex += String(ptr[j], HEX);
     }
   }
-  return found;
 }
 
 void clearLogs() {
