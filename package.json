@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "opencode-gemini-auth": "^1.4.10",
+    "opencode-plugin-opencoder": "github:opencodeco/opencode-plugin-opencoder"
+  }
+}

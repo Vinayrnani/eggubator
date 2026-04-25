@@ -10,6 +10,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EGGubator Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -54,6 +55,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
     h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
+    .icon { font-size: 32px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
+    .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
+    .fan-active { color: #42b72a !important; }
+    .atomizer-active { color: #1877f2 !important; animation: drip 1s infinite; }
+    .atomizer-idle { filter: grayscale(100%); opacity: 0.5; color: #8a8d91; }
+    @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 15px #f39c12); } }
+    @keyframes drip { 
+        0% { transform: translateY(0); opacity: 1; }
+        50% { transform: translateY(10px); opacity: 0.5; }
+        100% { transform: translateY(20px); opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -90,19 +102,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div class="stat-card">
           <div class="stat-label">Heater</div>
-          <div class="stat-value" id="heaterStat">--</div>
+          <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Atomizer</div>
-          <div class="stat-value" id="atomizerStat">--</div>
+          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-droplet"></i></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Fan</div>
-          <div class="stat-value" id="fanStat">--</div>
+          <div class="stat-value" id="fanStat"><i class="icon fa-solid fa-fan"></i></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Turner</div>
-          <div class="stat-value" id="turnerStat">--</div>
+          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrows-left-right" id="turnerIcon"></i></div>
         </div>
       </div>
     </div>
@@ -192,11 +204,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('targetHum').textContent = d.targetHum.toFixed(1);
       document.getElementById('uptime').textContent = d.uptime;
       
-      const hStat = document.getElementById('heaterStat'); hStat.textContent = d.heater ? 'ON' : 'OFF'; hStat.className = 'stat-value ' + (d.heater ? 'on' : 'off');
-      const aStat = document.getElementById('atomizerStat'); aStat.textContent = d.atomizer ? 'ON' : 'OFF'; aStat.className = 'stat-value ' + (d.atomizer ? 'on' : 'off');
-      const fStat = document.getElementById('fanStat'); fStat.textContent = d.fan ? 'ON' : 'OFF'; fStat.className = 'stat-value ' + (d.fan ? 'on' : 'off');
-      const tStat = document.getElementById('turnerStat'); tStat.textContent = d.servo === 0 ? 'IDLE' : (d.servo === 1 ? 'FORW' : 'REV'); tStat.className = 'stat-value ' + (d.servo !== 0 ? 'on' : 'idle');
+      document.getElementById('heaterStat').firstElementChild.className = 'icon fa-solid fa-lightbulb ' + (d.heater ? 'heater-active' : '');
+      document.getElementById('atomizerStat').firstElementChild.className = 'icon fa-solid fa-droplet ' + (d.atomizer ? 'atomizer-active' : 'atomizer-idle');
+      document.getElementById('fanStat').firstElementChild.className = 'icon fa-solid fa-fan ' + (d.fan ? 'fan-active fa-spin' : '');
       
+      const tIcon = document.getElementById('turnerIcon');
+      tIcon.style.transform = (d.servo == 1 ? 'rotate(-45deg)' : (d.servo == 2 ? 'rotate(45deg)' : 'rotate(0deg)'));
+      tIcon.style.color = (d.servo !== 0 ? 'var(--on)' : 'var(--idle)');
+
       const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
     }
 
