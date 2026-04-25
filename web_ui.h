@@ -133,6 +133,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     let mainChart;
     let refreshTimer;
+    let logDataArray = [];
+    let lastTimestamp = 0;
 
     function decodeLogs(hex, logCount) {
       if (!hex) return [];
@@ -205,7 +207,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function update() {
-      fetch('/data').then(r => r.json()).then(d => {
+      fetch(`/data?since=${lastTimestamp}`).then(r => r.json()).then(d => {
         document.getElementById('temp').textContent = d.temperature.toFixed(1) + '°C';
         document.getElementById('hum').textContent = d.humidity.toFixed(1) + '%';
         document.getElementById('targetTemp').textContent = d.targetTemp.toFixed(1);
@@ -219,16 +221,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         
         const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
 
-        const logs = decodeLogs(d.logs, d.logCount);
-        if (logs.length > 0) {
-          const now = logs[logs.length-1].t;
-          const xData = logs.map(l => (l.t - now)/1000);
-          mainChart.data.datasets[0].data = logs.map((l,i) => ({ x: xData[i], y: l.temp }));
-          mainChart.data.datasets[1].data = logs.map((l,i) => ({ x: xData[i], y: l.hum }));
-          mainChart.data.datasets[2].data = logs.map((l,i) => ({ x: xData[i], y: l.h }));
-          mainChart.data.datasets[3].data = logs.map((l,i) => ({ x: xData[i], y: l.a }));
-          mainChart.data.datasets[4].data = logs.map((l,i) => ({ x: xData[i], y: l.f }));
-          mainChart.data.datasets[5].data = logs.map((l,i) => ({ x: xData[i], y: l.s }));
+        const newEntries = decodeLogs(d.logs, d.logCount);
+        if (newEntries.length > 0) {
+          logDataArray = logDataArray.concat(newEntries);
+          if (logDataArray.length > 1000) {
+            logDataArray = logDataArray.slice(logDataArray.length - 1000);
+          }
+          lastTimestamp = logDataArray[logDataArray.length - 1].t;
+        }
+
+        if (logDataArray.length > 0) {
+          const nowTs = logDataArray[logDataArray.length - 1].t;
+          const xData = logDataArray.map(l => (l.t - nowTs)/1000);
+          mainChart.data.datasets[0].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.temp }));
+          mainChart.data.datasets[1].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.hum }));
+          mainChart.data.datasets[2].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.h }));
+          mainChart.data.datasets[3].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.a }));
+          mainChart.data.datasets[4].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.f }));
+          mainChart.data.datasets[5].data = logDataArray.map((l,i) => ({ x: xData[i], y: l.s }));
           mainChart.update('none');
         }
       });
@@ -243,7 +253,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     function setStage() {
       const s = document.getElementById('stageSelect').value;
-      fetch(`/mock/api?stageType=${s}`).then(() => update());
+      fetch(`/mock/api?stageType=${s}`).then(() => {
+        // Clear local logs on stage change to avoid confusion, or just let them be.
+        // Actually, better to just update.
+        update();
+      });
     }
 
     initCharts();
@@ -347,7 +361,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('ip').textContent = d.ip;
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
-        document.getElementById('logCount').textContent = d.logCount;
+        document.getElementById('logCount').textContent = d.logTotal;
         document.getElementById('version').textContent = d.version;
         document.getElementById('uptimeSys').textContent = d.uptime;
         
