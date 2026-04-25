@@ -3,29 +3,37 @@
 
 #include <Arduino.h>
 
-struct LogEntry {
+struct __attribute__((packed)) LogEntry {
   uint32_t timestamp;
-  uint16_t temp;    // temperature × 10 (0-6553.5°C)
-  uint16_t hum;     // humidity × 10 (0-6553.5%)
-  uint8_t states;   // bit 0: heater, bit 1: atomizer, bit 2: fan, bit 3: servo
-  uint8_t servoPos; // servo position (0-180)
+  uint8_t temp;    // (T-20)*10
+  uint8_t hum;     // rounded to integer
+  uint8_t states;  // bits: 0:Heater, 1:Atomizer, 2:Fan, 3-4:Turner state
 };
 
-#define MAX_LOG_ENTRIES 500
+#define MAX_LOG_ENTRIES 1000
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
 #define STATE_FAN       0x04
-#define STATE_SERVO     0x08
+// Turner state in bits 3-4
+// -1 -> 2 (binary 10)
+//  0 -> 0 (binary 00)
+//  1 -> 1 (binary 01)
+#define GET_TURNER(s)   (((s) >> 3) & 0x03)
+#define SET_TURNER(s,v) ((s) | (((v) & 0x03) << 3))
 
 extern LogEntry logBuffer[MAX_LOG_ENTRIES];
 extern int logIndex;
 extern bool logFull;
 extern unsigned long lastLogTime;
 
+extern float lastLoggedTemp;
+extern float lastLoggedHum;
+extern uint8_t lastLoggedStates;
+
 void initLogging();
-void logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
-void getLogDataForWeb(String& json);
+bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
+void getLogHex(String& hex);
 void clearLogs();
 
 #endif

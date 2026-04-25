@@ -34,8 +34,46 @@ unsigned long LOG_INTERVAL = 10000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
-unsigned long TARGET_TEMP = 375;    // Default 37.5°C
-unsigned long TARGET_HUMIDITY = 600; // Default 60.0%
+float TARGET_TEMP = 37.5;    // Default 37.5°C
+float TARGET_HUMIDITY = 55.0; // Default 55.0%
+
+// EEPROM addresses for settings
+#define EEPROM_SETTINGS_MAGIC 19
+#define EEPROM_STAGE 20
+#define EEPROM_LOG_INTERVAL 24
+#define EEPROM_TURN_INTERVAL 28
+#define SETTINGS_MAGIC_VAL 0xA5
+
+void saveSettings() {
+  EEPROM.write(EEPROM_SETTINGS_MAGIC, SETTINGS_MAGIC_VAL);
+  EEPROM.write(EEPROM_STAGE, stageLockdown ? 1 : 0);
+  EEPROM.put(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
+  EEPROM.put(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
+  EEPROM.commit();
+  Serial.println("Settings saved to EEPROM");
+}
+
+void loadSettings() {
+  if (EEPROM.read(EEPROM_SETTINGS_MAGIC) == SETTINGS_MAGIC_VAL) {
+    stageLockdown = EEPROM.read(EEPROM_STAGE) == 1;
+    EEPROM.get(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
+    EEPROM.get(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
+    
+    if (stageLockdown) {
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 65.0;
+      servoEnabled = false;
+    } else {
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 55.0;
+      servoEnabled = true;
+    }
+    Serial.println("Settings loaded from EEPROM");
+  } else {
+    Serial.println("No saved settings found, using defaults");
+    saveSettings();
+  }
+}
 
 // Global variables
 float currentTemp = 0;
@@ -43,7 +81,7 @@ float currentHumidity = 0;
 bool heaterState = false;
 bool atomizerState = false;
 bool fanState = false;
-bool servoEnabled = false;
+bool servoEnabled = true;
 int servoPosition = 0; // -1 = -45deg, 0 = center, 1 = +45deg
 int heaterMode = AUTO;
 bool stageLockdown = false;  // false = incubation (1-18), true = lockdown (19-21)
@@ -53,12 +91,6 @@ int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
-
-// CPU monitoring
-unsigned long lastCpuCheck = 0;
-unsigned long cpuCyclesStart = 0;
-unsigned long cpuCyclesEnd = 0;
-unsigned long cpuUtil = 0;
 
 // Control state variables
 unsigned long atomizerPulseStart = 0;
@@ -98,30 +130,29 @@ void handleData() {
   
   String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"humidity\":" + String(currentHumidity) +
-                ",\"heater\":" + String(heaterState ? "true" : "false") +
-                ",\"atomizer\":" + String(atomizerState ? "true" : "false") +
-                ",\"fan\":" + String(fanState ? "true" : "false") +
-                ",\"servo\":" + String(servoEnabled ? "true" : "false") +
+                ",\"heater\":" + String(heaterState ? 1 : 0) +
+                ",\"atomizer\":" + String(atomizerState ? 1 : 0) +
+                ",\"fan\":" + String(fanState ? 1 : 0) +
+                ",\"servo\":" + String(servoPosition) +
                 ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
                 ",\"uptime\":\"" + uptimeStr + "\"" +
-                ",\"mock\":" + String(useMockSensor ? "true" : "false") +
-                ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
-                ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
+                ",\"mock\":" + String(useMockSensor ? 1 : 0) +
+                ",\"autosim\":" + String(autoSimMode ? 1 : 0) +
+                ",\"stageLockdown\":" + String(stageLockdown ? 1 : 0) +
                 ",\"heaterMode\":" + String(heaterMode) +
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
-                ",\"logCnt\":" + String(logIndex) +
-                ",\"sys\":{\"heapFree\":" + String(ESP.getFreeHeap()) +
-                ",\"cpu\":" + String(cpuUtil) +
-                "}}";
+                ",\"logCount\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
+                ",\"targetTemp\":" + String(TARGET_TEMP) +
+                ",\"targetHum\":" + String(TARGET_HUMIDITY) +
+                ",\"heapFree\":" + String(ESP.getFreeHeap());
+
+  String logHex = "";
+  getLogHex(logHex);
+  json += ",\"logs\":\"" + logHex + "\"}";
   
-  // Note: getLogDataForWeb handles adding the "log" array to the JSON
-  String jsonWithLog = json.substring(0, json.length() - 1);
-  getLogDataForWeb(jsonWithLog);
-  jsonWithLog += "}";
-  
-  server.send(200, "application/json", jsonWithLog);
+  server.send(200, "application/json", json);
 }
 
 void handleControl() {
@@ -152,8 +183,8 @@ void handleControl() {
       }
     } else if (device == "servo") {
       servoMode = isKillOff ? KILL_OFF : AUTO;
+      servoEnabled = !isKillOff;
       if (isKillOff) {
-        servoEnabled = false;
         servoPosition = 0;
         eggServo.write(SERVO_CENTER);
       }
@@ -206,22 +237,25 @@ void handleMockSensor() {
   } else if (server.hasArg("logInterval")) {
     unsigned long val = server.arg("logInterval").toInt();
     LOG_INTERVAL = val;
+    saveSettings();
     server.send(200, "text/plain", "Log interval set to " + String(val/1000) + "s");
   } else if (server.hasArg("eggTurnInterval")) {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
+    saveSettings();
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
   } else if (server.hasArg("stageType")) {
     String type = server.arg("stageType");
     if (type == "lockdown") {
       stageLockdown = true;
-      TARGET_TEMP = 375;
-      TARGET_HUMIDITY = 650;
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 65.0;
     } else if (type == "incubation") {
       stageLockdown = false;
-      TARGET_TEMP = 375;
-      TARGET_HUMIDITY = 550;
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 55.0;
     }
+    saveSettings();
     server.send(200, "text/plain", "Stage set to " + type);
   } else {
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
@@ -242,10 +276,11 @@ void autoControl() {
   if (!isnan(currentTemp) && !isnan(currentHumidity)) {
     unsigned long now = millis();
     
+    // Heater Control
     if (heaterMode == AUTO) {
       if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
         heaterState = true;
-      } else if (currentTemp > TARGET_TEMP + TEMP_HYSTERESIS) {
+      } else if (currentTemp >= TARGET_TEMP) {
         heaterState = false;
       }
       digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
@@ -262,29 +297,30 @@ void autoControl() {
       }
     }
     
+    // Atomizer Control
     if (atomizerMode == AUTO) {
-      if (currentHumidity < TARGET_HUMIDITY) {
+      if (currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS) {
         if (!atomizerPulsing && !atomizerInOffPhase) {
           atomizerState = true;
           digitalWrite(RELAY_ATOMIZER, HIGH);
           atomizerPulseStart = millis();
           atomizerPulsing = true;
-        } else if (atomizerPulsing && (millis() - atomizerPulseStart >= PULSE_ON_TIME)) {
-          atomizerState = false;
-          digitalWrite(RELAY_ATOMIZER, LOW);
-          atomizerPulsing = false;
-          atomizerInOffPhase = true;
-          atomizerOffStart = millis();
-        } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= PULSE_OFF_TIME)) {
-          atomizerInOffPhase = false;
         }
-      } else {
-        if (atomizerState) {
-          atomizerState = false;
-          digitalWrite(RELAY_ATOMIZER, LOW);
-          atomizerPulsing = false;
-          atomizerInOffPhase = false;
-        }
+      } else if (currentHumidity >= TARGET_HUMIDITY) {
+        atomizerState = false;
+        digitalWrite(RELAY_ATOMIZER, LOW);
+        atomizerPulsing = false;
+        atomizerInOffPhase = false;
+      }
+
+      if (atomizerPulsing && (millis() - atomizerPulseStart >= PULSE_ON_TIME)) {
+        atomizerState = false;
+        digitalWrite(RELAY_ATOMIZER, LOW);
+        atomizerPulsing = false;
+        atomizerInOffPhase = true;
+        atomizerOffStart = millis();
+      } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= PULSE_OFF_TIME)) {
+        atomizerInOffPhase = false;
       }
       
       if (atomizerState != atomizerWasOn) {
@@ -301,11 +337,7 @@ void autoControl() {
       }
     }
     
-    bool tempStable = (currentTemp >= TARGET_TEMP - TEMP_HYSTERESIS && 
-                     currentTemp <= TARGET_TEMP + TEMP_HYSTERESIS);
-    bool humStable = (currentHumidity >= TARGET_HUMIDITY - HUMIDITY_HYSTERESIS && 
-                     currentHumidity <= TARGET_HUMIDITY + HUMIDITY_HYSTERESIS);
-    
+    // Fan Control
     if (fanMode == AUTO) {
       bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
       bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
@@ -313,7 +345,7 @@ void autoControl() {
       if (heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
           currentTemp > MAX_SAFE_TEMP) {
         fanState = true;
-      } else if (tempStable && humStable) {
+      } else {
         fanState = false;
       }
       digitalWrite(RELAY_FAN, fanState ? HIGH : LOW);
@@ -434,6 +466,7 @@ void setup() {
 
   initLogging();
   initRecovery();
+  loadSettings();
   connectWiFi();
   markBootSuccess();
 
@@ -464,18 +497,6 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  // CPU monitoring - measure cycles every second
-  if (millis() - lastCpuCheck > 1000) {
-    cpuCyclesEnd = ESP.getCycleCount();
-    if (cpuCyclesStart > 0) {
-      unsigned long cycles = cpuCyclesEnd - cpuCyclesStart;
-      cpuUtil = (cycles / 8000); // 80MHz / 10000 = rough %, adjusted
-      if (cpuUtil > 100) cpuUtil = 100;
-    }
-    cpuCyclesStart = cpuCyclesEnd;
-    lastCpuCheck = millis();
-  }
-
   if (millis() - lastReadTime > 2000) {
     if (autoSimMode) {
       updateAutoSim(heaterState, atomizerState, fanState);
@@ -483,17 +504,13 @@ void loop() {
     float t = readDHT22();
     float h = readHumidity();
 
-    if (t > 0 && h > 0) {
+    if (!isnan(t) && !isnan(h) && t > 0 && h > 0) {
       currentTemp = t;
       currentHumidity = h;
       autoControl();
+      logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
     }
     lastReadTime = millis();
-  }
-
-  if (millis() - lastLogTime >= LOG_INTERVAL) {
-    logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
-    lastLogTime = millis();
   }
 
   if (servoEnabled) {
