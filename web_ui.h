@@ -44,16 +44,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .badge-incubation { background: #e7f3ff; color: var(--primary); }
     .badge-lockdown { background: #fff4e5; color: #d97706; }
-    select, button { padding: 12px 20px; border-radius: 12px; border: 1px solid #e0e4e9; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; outline: none; }
-    button { background: var(--primary); color: white; border: none; box-shadow: 0 4px 8px rgba(24, 119, 242, 0.25); }
+    select, button { padding: 12px 20px; border-radius: 12px; border: 1px solid #e0e4e9; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; outline: none; box-shadow: none; }
+    button { background: var(--primary); color: white; border: none; }
     button:hover { background: var(--primary-dark); transform: scale(1.02); }
     .refresh-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 600; }
     .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; }
     .refresh-control select option { color: black; }
-    .chart-box { position: relative; margin-top: 10px; width: 100%; display: flex; flex-direction: column; }
-    .canvas-container { width: 100%; position: relative; }
-    #envChartContainer { height: 350px; }
-    #actChartContainer { height: 180px; border-top: 1px dashed #eee; margin-top: 10px; padding-top: 10px; }
+    .chart-box { position: relative; margin-top: 10px; width: 100%; height: 600px; }
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
     h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
@@ -124,8 +121,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <div class="card">
       <h3>History & Device Activity</h3>
       <div class="chart-box">
-        <div id="envChartContainer" class="canvas-container"><canvas id="envChart"></canvas></div>
-        <div id="actChartContainer" class="canvas-container"><canvas id="actChart"></canvas></div>
+        <canvas id="mainChart"></canvas>
       </div>
     </div>
 
@@ -135,7 +131,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   </div>
 
   <script>
-    let envChart, actChart;
+    let mainChart;
     let refreshTimer;
 
     function decodeLogs(hex, logCount) {
@@ -155,54 +151,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function initCharts() {
-      const sync = (chart) => {
-        const otherChart = chart === envChart ? actChart : envChart;
-        if (!otherChart) return;
-        otherChart.options.scales.x.min = chart.options.scales.x.min;
-        otherChart.options.scales.x.max = chart.options.scales.x.max;
-        otherChart.update('none');
-      };
-
-      const zoomOptions = {
-        pan: { enabled: true, mode: 'xy' },
-        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' },
-        onZoom: ({chart}) => sync(chart),
-        onPan: ({chart}) => sync(chart)
-      };
-
-      const envCtx = document.getElementById('envChart').getContext('2d');
-      envChart = new Chart(envCtx, {
+      const ctx = document.getElementById('mainChart').getContext('2d');
+      mainChart = new Chart(ctx, {
         type: 'line',
         data: {
           datasets: [
             { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'yTemp', pointRadius: 0, borderWidth: 3, tension: 0.35 },
-            { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'yHum', pointRadius: 0, borderWidth: 3, tension: 0.35 }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          scales: {
-            x: { type: 'linear', title: { display: false }, grid: { color: '#f0f0f0' } },
-            yTemp: { type: 'linear', position: 'left', title: { display: true, text: 'Temp °C', font: { weight: 'bold' } }, min: 30, max: 45 },
-            yHum: { type: 'linear', position: 'right', title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, min: 0, max: 100, grid: { display: false } }
-          },
-          plugins: {
-            legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { weight: '700' } } },
-            zoom: zoomOptions
-          }
-        }
-      });
-
-      const actCtx = document.getElementById('actChart').getContext('2d');
-      actChart = new Chart(actCtx, {
-        type: 'line',
-        data: {
-          datasets: [
-            { label: 'Heater', borderColor: '#f02849', backgroundColor: 'rgba(240, 40, 73, 0.1)', data: [], stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Atomizer', borderColor: '#1877f2', backgroundColor: 'rgba(24, 119, 242, 0.1)', data: [], stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Fan', borderColor: '#42b72a', backgroundColor: 'rgba(66, 183, 42, 0.1)', data: [], stepped: true, fill: true, pointRadius: 0 },
-            { label: 'Turner', borderColor: '#925e0d', data: [], stepped: true, pointRadius: 0, borderWidth: 2 }
+            { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'yHum', pointRadius: 0, borderWidth: 3, tension: 0.35 },
+            { label: 'Heater', borderColor: '#f02849', backgroundColor: 'rgba(240, 40, 73, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
+            { label: 'Atomizer', borderColor: '#1877f2', backgroundColor: 'rgba(24, 119, 242, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
+            { label: 'Fan', borderColor: '#42b72a', backgroundColor: 'rgba(66, 183, 42, 0.1)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0 },
+            { label: 'Turner', borderColor: '#925e0d', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 2 }
           ]
         },
         options: {
@@ -210,20 +169,33 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: { type: 'linear', title: { display: true, text: 'Time (seconds ago)', font: { weight: 'bold' } }, grid: { color: '#f0f0f0' } },
-            y: { min: -1.2, max: 1.2, ticks: { callback: v => v===1?'ON':(v===-1?'REV':'OFF') } }
+            yTemp: { type: 'linear', position: 'left', stack: 'y', stackWeight: 2, title: { display: true, text: 'Temp °C', font: { weight: 'bold' } }, min: 30, max: 45 },
+            yHum: { type: 'linear', position: 'right', stack: 'y', stackWeight: 2, title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, min: 0, max: 100, grid: { display: false } },
+            yAct: { 
+              type: 'linear', position: 'left', stack: 'y', stackWeight: 1, offset: true,
+              min: -1.2, max: 1.2, 
+              ticks: { callback: v => v===1?'ON':(v===-1?'REV':'OFF'), stepSize: 1 },
+              grid: { color: '#f8f8f8' }
+            }
           },
           plugins: {
-            legend: { display: false },
-            zoom: zoomOptions,
+            legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { weight: '700' } } },
+            zoom: {
+              pan: { enabled: true, mode: 'xy' },
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
+            },
             tooltip: {
               callbacks: {
                 label: function(context) {
                   let val = context.parsed.y;
                   let label = context.dataset.label + ': ';
-                  if (context.datasetIndex === 3) { // Turner
-                    return label + (val === 1 ? 'FORW' : (val === -1 ? 'REV' : 'IDLE'));
+                  if (context.datasetIndex > 1) { // Control datasets
+                    if (context.datasetIndex === 5) { // Turner
+                      return label + (val === 1 ? 'FORW' : (val === -1 ? 'REV' : 'IDLE'));
+                    }
+                    return label + (val === 1 ? 'ON' : 'OFF');
                   }
-                  return label + (val === 1 ? 'ON' : 'OFF');
+                  return label + val.toFixed(1) + (context.datasetIndex === 0 ? '°C' : '%');
                 }
               }
             }
@@ -251,15 +223,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         if (logs.length > 0) {
           const now = logs[logs.length-1].t;
           const xData = logs.map(l => (l.t - now)/1000);
-          envChart.data.datasets[0].data = logs.map((l,i) => ({ x: xData[i], y: l.temp }));
-          envChart.data.datasets[1].data = logs.map((l,i) => ({ x: xData[i], y: l.hum }));
-          envChart.update('none');
-
-          actChart.data.datasets[0].data = logs.map((l,i) => ({ x: xData[i], y: l.h }));
-          actChart.data.datasets[1].data = logs.map((l,i) => ({ x: xData[i], y: l.a }));
-          actChart.data.datasets[2].data = logs.map((l,i) => ({ x: xData[i], y: l.f }));
-          actChart.data.datasets[3].data = logs.map((l,i) => ({ x: xData[i], y: l.s }));
-          actChart.update('none');
+          mainChart.data.datasets[0].data = logs.map((l,i) => ({ x: xData[i], y: l.temp }));
+          mainChart.data.datasets[1].data = logs.map((l,i) => ({ x: xData[i], y: l.hum }));
+          mainChart.data.datasets[2].data = logs.map((l,i) => ({ x: xData[i], y: l.h }));
+          mainChart.data.datasets[3].data = logs.map((l,i) => ({ x: xData[i], y: l.a }));
+          mainChart.data.datasets[4].data = logs.map((l,i) => ({ x: xData[i], y: l.f }));
+          mainChart.data.datasets[5].data = logs.map((l,i) => ({ x: xData[i], y: l.s }));
+          mainChart.update('none');
         }
       });
     }
