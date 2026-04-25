@@ -146,7 +146,9 @@ void handleData() {
                 ",\"logCount\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
-                ",\"heapFree\":" + String(ESP.getFreeHeap());
+                ",\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
+                ",\"rssi\":" + String(WiFi.RSSI());
 
   String logHex = "";
   getLogHex(logHex);

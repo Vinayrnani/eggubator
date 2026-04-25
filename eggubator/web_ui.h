@@ -7,7 +7,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EGGubator Pro</title>
+  <title>EGGubator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
@@ -34,11 +34,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .stage-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
     .badge-incubation { background: #e7f3ff; color: #1877f2; }
     .badge-lockdown { background: #fef2d8; color: #925e0d; }
+    .sys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px; color: #65676b; }
+    .sys-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f0f2f5; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>EGGubator Pro</h1>
+    <h1>EGGubator</h1>
     
     <div class="card">
       <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -97,6 +99,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
+      <h3>System Information</h3>
+      <div class="sys-grid">
+        <div class="sys-item"><span>IP Address:</span><span id="ip">--</span></div>
+        <div class="sys-item"><span>WiFi Signal:</span><span id="rssi">-- dBm</span></div>
+        <div class="sys-item"><span>Free Heap:</span><span id="heap">-- KB</span></div>
+        <div class="sys-item"><span>RAM Logs:</span><span id="logCount">--</span></div>
+        <div class="sys-item"><span>Firmware:</span><span id="version">--</span></div>
+        <div class="sys-item"><span>Uptime:</span><span id="uptimeSys">--</span></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Environmental History</h3>
       <div class="chart-box"><canvas id="envChart"></canvas></div>
     </div>
@@ -104,13 +118,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <div class="card">
       <h3>System Activity</h3>
       <div class="chart-box"><canvas id="actChart"></canvas></div>
-      <div style="font-size: 11px; color: #8a8d91; margin-top: 10px; text-align: right;">
-        RAM Logs: <span id="logCount">0</span> records | Heap: <span id="heap">--</span>KB
-      </div>
     </div>
 
     <div class="footer">
-      Firmware v<span id="version">--</span> | <a href="/mock" style="color:#1877f2;text-decoration:none">Advanced Settings</a>
+      EGGubator | <a href="/mock" style="color:#1877f2;text-decoration:none">Advanced Settings</a>
     </div>
   </div>
 
@@ -203,9 +214,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('targetTemp').textContent = d.targetTemp.toFixed(1);
         document.getElementById('targetHum').textContent = d.targetHum.toFixed(1);
         document.getElementById('uptime').textContent = d.uptime;
+        document.getElementById('uptimeSys').textContent = d.uptime;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
         document.getElementById('logCount').textContent = d.logCount;
         document.getElementById('version').textContent = d.version;
+        document.getElementById('ip').textContent = d.ip;
+        document.getElementById('rssi').textContent = d.rssi;
         
         const heaterStat = document.getElementById('heaterStat');
         heaterStat.textContent = d.heater ? 'ON' : 'OFF';
