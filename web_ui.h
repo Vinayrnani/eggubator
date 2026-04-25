@@ -162,10 +162,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           datasets: [
             { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'yTemp', pointRadius: 0, borderWidth: 3, tension: 0.35 },
             { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'yHum', pointRadius: 0, borderWidth: 3, tension: 0.35 },
-            { label: 'Heater', borderColor: '#f02849', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
-            { label: 'Atomizer', borderColor: '#1877f2', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
-            { label: 'Fan', borderColor: '#42b72a', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
-            { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 2 }
+            { label: 'Heater', borderColor: '#f02849', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
+            { label: 'Atomizer', borderColor: '#1877f2', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
+            { label: 'Fan', borderColor: '#42b72a', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
+            { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 }
           ]
         },
         options: {
@@ -173,9 +173,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: { type: 'linear', title: { display: true, text: 'Time (seconds ago)', font: { weight: 'bold' } }, grid: { color: '#f0f0f0' } },
-            yTemp: { type: 'linear', position: 'left', title: { display: true, text: 'Temp °C', font: { weight: 'bold' } }, min: 30, max: 45 },
-            yHum: { type: 'linear', position: 'right', title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, min: 0, max: 100, grid: { display: false } },
-            yAct: { type: 'linear', position: 'right', min: -2, max: 15, display: false, grid: { display: false } }
+            yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Temp °C', font: { weight: 'bold' } } },
+            yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, grid: { display: false } },
+            yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false }
           },
           plugins: {
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
@@ -205,10 +205,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const now = allLogs[allLogs.length-1].t;
         mainChart.data.datasets[0].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
         mainChart.data.datasets[1].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
-        mainChart.data.datasets[2].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1 : 0 }));
-        mainChart.data.datasets[3].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 1 : 0 }));
-        mainChart.data.datasets[4].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 1 : 0 }));
-        mainChart.data.datasets[5].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.s }));
+        mainChart.data.datasets[2].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1.0 : 0.0 }));
+        mainChart.data.datasets[3].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 3.0 : 2.0 }));
+        mainChart.data.datasets[4].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 5.0 : 4.0 }));
+        mainChart.data.datasets[5].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
         mainChart.update('none');
       }
     }
