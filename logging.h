@@ -32,7 +32,7 @@ extern float lastLoggedHum;
 extern uint8_t lastLoggedStates;
 
 void initLogging();
-bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo);
+bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval = 60000);
 void getLogHex(String& hex);
 void clearLogs();
 

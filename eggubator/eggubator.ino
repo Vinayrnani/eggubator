@@ -76,20 +76,38 @@ Servo eggServo;
 #define EEPROM_TURN_INTERVAL 28
 #define SETTINGS_MAGIC_VAL 0xA5
 
+struct DeviceSettings {
+  uint8_t magic;
+  bool stageLockdown;
+  unsigned long logInterval;
+  unsigned long turnInterval;
+};
+
 void saveSettings() {
-  EEPROM.write(EEPROM_SETTINGS_MAGIC, SETTINGS_MAGIC_VAL);
-  EEPROM.write(EEPROM_STAGE, stageLockdown ? 1 : 0);
-  EEPROM.put(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
-  EEPROM.put(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
-  EEPROM.commit();
-  Serial.println("Settings saved to EEPROM");
+  DeviceSettings settings;
+  EEPROM.get(EEPROM_SETTINGS_MAGIC, settings);
+  
+  bool changed = false;
+  if (settings.magic != SETTINGS_MAGIC_VAL) { settings.magic = SETTINGS_MAGIC_VAL; changed = true; }
+  if (settings.stageLockdown != stageLockdown) { settings.stageLockdown = stageLockdown; changed = true; }
+  if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
+  if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
+  
+  if (changed) {
+    EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
+    EEPROM.commit();
+    Serial.println("Settings saved to EEPROM");
+  }
 }
 
 void loadSettings() {
-  if (EEPROM.read(EEPROM_SETTINGS_MAGIC) == SETTINGS_MAGIC_VAL) {
-    stageLockdown = EEPROM.read(EEPROM_STAGE) == 1;
-    EEPROM.get(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
-    EEPROM.get(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
+  DeviceSettings settings;
+  EEPROM.get(EEPROM_SETTINGS_MAGIC, settings);
+  
+  if (settings.magic == SETTINGS_MAGIC_VAL) {
+    stageLockdown = settings.stageLockdown;
+    LOG_INTERVAL = settings.logInterval;
+    EGG_TURN_INTERVAL = settings.turnInterval;
     
     if (stageLockdown) {
       TARGET_TEMP = 37.5;
@@ -508,12 +526,12 @@ void loop() {
     float t = readDHT22();
     float h = readHumidity();
 
-    if (!isnan(t) && !isnan(h) && t > 0 && h > 0) {
-      currentTemp = t;
-      currentHumidity = h;
-      autoControl();
-      logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition);
-    }
+      if (!isnan(t) && !isnan(h) && t > 0 && h > 0) {
+        currentTemp = t;
+        currentHumidity = h;
+        autoControl();
+        logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition, LOG_INTERVAL);
+      }
     lastReadTime = millis();
   }
 

@@ -19,10 +19,10 @@ void initLogging() {
   lastLoggedStates = 0xFF;
 }
 
-bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo) {
+bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval) {
   uint8_t t_encoded = (uint8_t)((temp - 20.0) * 10.0 + 0.5);
   uint8_t h_encoded = (uint8_t)(hum + 0.5);
-  
+
   uint8_t turner_val = 0;
   if (servo == -1) turner_val = 2;
   else if (servo == 0) turner_val = 0;
@@ -39,8 +39,9 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   if (states != lastLoggedStates) significant = true;
   else if (fabs(temp - lastLoggedTemp) > 0.11) significant = true; // Use 0.11 to avoid flutter at exactly 0.1
   else if (fabs(hum - lastLoggedHum) > 1.01) significant = true;
+  else if (lastLogTime == 0 || (millis() - lastLogTime >= forceInterval)) significant = true;
 
-  if (!significant && lastLogTime != 0) return false;
+  if (!significant) return false;
 
   if (logIndex >= MAX_LOG_ENTRIES) {
     logIndex = 0;
