@@ -156,9 +156,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           datasets: [
             { label: 'Temp (°C)', borderColor: '#f02849', data: [], yAxisID: 'yTemp', pointRadius: 0, borderWidth: 3, tension: 0.35 },
             { label: 'Hum (%)', borderColor: '#1877f2', data: [], yAxisID: 'yHum', pointRadius: 0, borderWidth: 3, tension: 0.35 },
-            { label: 'Heater', borderColor: 'rgba(240, 40, 73, 0.4)', backgroundColor: 'rgba(240, 40, 73, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
-            { label: 'Atomizer', borderColor: 'rgba(24, 119, 242, 0.4)', backgroundColor: 'rgba(24, 119, 242, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
-            { label: 'Fan', borderColor: 'rgba(66, 183, 42, 0.4)', backgroundColor: 'rgba(66, 183, 42, 0.08)', data: [], yAxisID: 'yAct', stepped: true, fill: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Heater', borderColor: '#f02849', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Atomizer', borderColor: '#1877f2', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
+            { label: 'Fan', borderColor: '#42b72a', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 1 },
             { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yAct', stepped: true, pointRadius: 0, borderWidth: 2 }
           ]
         },
