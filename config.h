@@ -6,9 +6,9 @@
 #define WIFI_PASSWORD "dishoom1234"
 
 // Target Values
-extern unsigned long TARGET_TEMP;     // ×10 precision
-extern unsigned long TARGET_HUMIDITY; // ×10 precision
-#define TEMP_HYSTERESIS 0.5
+extern float TARGET_TEMP;
+extern float TARGET_HUMIDITY;
+#define TEMP_HYSTERESIS 0.3
 #define HUMIDITY_HYSTERESIS 5.0
 #define MAX_SAFE_TEMP 38.0
 
@@ -28,8 +28,5 @@ extern unsigned long EGG_TURN_INTERVAL;
 #define EGG_TURN_DURATION 10000      // 10 seconds
 #define SERVO_CENTER 90
 #define SERVO_ANGLE 45
-
-// Storage
-#define MAX_LOG_ENTRIES 500          // RAM capacity (~4KB)
 
 #endif

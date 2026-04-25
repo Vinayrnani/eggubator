@@ -1,0 +1,93 @@
+// ============================================
+// EGG INCUBATOR CONTROLLER - Modular Version
+// ============================================
+
+// Include header files
+#include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266HTTPClient.h>
+#include <Servo.h>
+#include <EEPROM.h>
+
+#include "config.h"
+#include "dht_sensor.h"
+#include "wifi_manager.h"
+#include "logging.h"
+#include "updates.h"
+#include "web_ui.h"
+
+extern bool useMockSensor;
+extern bool autoSimMode;
+extern float mockTemp;
+extern float mockHum;
+extern float simTemp;
+extern float simHum;
+extern void updateAutoSim(bool heater, bool atomizer, bool fan);
+
+#define KILL_OFF 0
+#define AUTO 1
+
+// Configurable timing (can be changed via web)
+unsigned long LOG_INTERVAL = 10000;
+unsigned long EGG_TURN_INTERVAL = 7200000;
+
+// Target temperature and humidity (can be changed via web/stage selection)
+float TARGET_TEMP = 37.5;    // Default 37.5°C
+float TARGET_HUMIDITY = 55.0; // Default 55.0%
+
+// Global variables
+float currentTemp = 0;
+float currentHumidity = 0;
+bool heaterState = false;
+bool atomizerState = false;
+bool fanState = false;
+bool servoEnabled = true;
+int servoPosition = 0; // -1 = -45deg, 0 = center, 1 = +45deg
+int heaterMode = AUTO;
+bool stageLockdown = false;  // false = incubation (1-18), true = lockdown (19-21)
+int atomizerMode = AUTO;
+int fanMode = AUTO;
+int servoMode = AUTO;
+unsigned long lastReadTime = 0;
+unsigned long lastOtaCheck = 0;
+unsigned long lastServoTurn = 0;
+
+// EEPROM addresses for settings
+#define EEPROM_SETTINGS_MAGIC 19
+#define EEPROM_STAGE 20
+#define EEPROM_LOG_INTERVAL 24
+#define EEPROM_TURN_INTERVAL 28
+#define SETTINGS_MAGIC_VAL 0xA5
+
+void saveSettings() {
+  EEPROM.write(EEPROM_SETTINGS_MAGIC, SETTINGS_MAGIC_VAL);
+  EEPROM.write(EEPROM_STAGE, stageLockdown ? 1 : 0);
+  EEPROM.put(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
+  EEPROM.put(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
+  EEPROM.commit();
+  Serial.println("Settings saved to EEPROM");
+}
+
+void loadSettings() {
+  if (EEPROM.read(EEPROM_SETTINGS_MAGIC) == SETTINGS_MAGIC_VAL) {
+    stageLockdown = EEPROM.read(EEPROM_STAGE) == 1;
+    EEPROM.get(EEPROM_LOG_INTERVAL, LOG_INTERVAL);
+    EEPROM.get(EEPROM_TURN_INTERVAL, EGG_TURN_INTERVAL);
+    
+    if (stageLockdown) {
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 65.0;
+      servoEnabled = false;
+    } else {
+      TARGET_TEMP = 37.5;
+      TARGET_HUMIDITY = 55.0;
+      servoEnabled = true;
+    }
+    Serial.println("Settings loaded from EEPROM");
+  } else {
+    Serial.println("No saved settings found, using defaults");
+    saveSettings();
+  }
+}
