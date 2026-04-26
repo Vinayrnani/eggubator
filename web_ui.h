@@ -594,7 +594,13 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       fetch(`/settings/api?temp=${t}&hum=${h}`).then(() => fetch('/status'));
     }
     
-    function reboot() { if(confirm('Reboot device?')) fetch('/reboot'); }
+    function reboot() { 
+      if(confirm('Reboot device?')) {
+        fetch('/reboot');
+        document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;font-size:24px;color:#1877f2;font-weight:bold;">Restarting... Please wait.</div>';
+        setTimeout(() => location.reload(), 10000);
+      }
+    }
     
     mainLoop();
   </script>
