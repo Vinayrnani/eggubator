@@ -136,6 +136,37 @@ void handleMockPage() {
   server.send(200, "text/html; charset=utf-8", MOCK_HTML);
 }
 
+void handleStatus() {
+  unsigned long uptimeSec = millis() / 1000;
+  int days = uptimeSec / 86400;
+  int hours = (uptimeSec % 86400) / 3600;
+  int mins = (uptimeSec % 3600) / 60;
+  int secs = uptimeSec % 60;
+  String uptimeStr = "";
+  if (days > 0) uptimeStr += String(days) + "d ";
+  uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
+  
+  String json = "{\"temperature\":" + String(currentTemp) +
+                ",\"humidity\":" + String(currentHumidity) +
+                ",\"heater\":" + String(heaterState ? 1 : 0) +
+                ",\"atomizer\":" + String(atomizerState ? 1 : 0) +
+                ",\"fan\":" + String(fanState ? 1 : 0) +
+                ",\"servo\":" + String(servoPosition) +
+                ",\"version\":\"" + FIRMWARE_VERSION + "\"" +
+                ",\"uptime\":\"" + uptimeStr + "\"" +
+                ",\"mock\":" + String(useMockSensor ? 1 : 0) +
+                ",\"autosim\":" + String(autoSimMode ? 1 : 0) +
+                ",\"stageLockdown\":" + String(stageLockdown ? 1 : 0) +
+                ",\"targetTemp\":" + String(TARGET_TEMP) +
+                ",\"targetHum\":" + String(TARGET_HUMIDITY) +
+                ",\"heapFree\":" + String(ESP.getFreeHeap()) +
+                ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
+                ",\"rssi\":" + String(WiFi.RSSI()) +
+                ",\"totalLogs\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) + "}";
+
+  server.send(200, "application/json", json);
+}
+
 void handleData() {
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
@@ -514,6 +545,7 @@ void setup() {
 // Setup web server
   server.on("/", handleRoot);
   server.on("/mock", handleMockPage);
+  server.on("/status", handleStatus);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/ota/check", handleOtaCheck);

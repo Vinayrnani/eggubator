@@ -72,13 +72,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="container">
     <div class="header">
       <h1>🥚 EGGubator 🐣</h1>
-      <select id="refreshRate" onchange="updateRefreshInterval()" style="position: absolute; right: 28px; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; font-weight:700;">
-        <option value="1000">1s</option>
-        <option value="2000">2s</option>
-        <option value="5000">5s</option>
-        <option value="10000">10s</option>
-        <option value="30000">30s</option>
-      </select>
     </div>
 
     <div class="card">
@@ -152,7 +145,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
-      <h3>History & Device Activity</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <h3 style="margin: 0;">History & Device Activity</h3>
+        <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: var(--bg); border: 1px solid #e0e4e9; color: var(--text); font-size: 11px; font-weight:700;">
+          <option value="1000">1s</option>
+          <option value="2000">2s</option>
+          <option value="5000">5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+        </select>
+      </div>
       <div class="chart-box"><canvas id="mainChart"></canvas></div>
     </div>
 
@@ -296,68 +298,60 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function fetchNextBatch(since) {
-      fetch('/data?since=' + since + '&count=100').then(r => r.json()).then(d => {
+      return fetch('/data?since=' + since + '&count=100').then(r => r.json()).then(d => {
         const newEntries = decodeLogs(d.logs, d.sentCount);
         allLogs = allLogs.concat(newEntries);
         if (d.sentCount >= 100 && allLogs.length < d.totalLogs) {
           const nextSince = newEntries.length > 0 ? newEntries[newEntries.length-1].t : since;
-          fetchNextBatch(nextSince);
+          return fetchNextBatch(nextSince);
         } else {
           initialLoadDone = true;
           latestTs = allLogs.length > 0 ? allLogs[allLogs.length-1].t : 0;
           updateChart();
-          updateLiveData(d);
-          isLoading = false;
-          
-          // Start interval only after initial load completes
-          if (!refreshTimer) {
-             refreshTimer = setInterval(update, refreshRate);
+          calculateAverages();
+        }
+      });
+    }
+
+    let lastChartUpdate = 0;
+
+    async function mainLoop() {
+      try {
+        const statusRes = await fetch('/status');
+        const statusData = await statusRes.json();
+        updateLiveData(statusData);
+
+        const now = Date.now();
+        if (now - lastChartUpdate >= refreshRate) {
+          if (!initialLoadDone) {
+            await fetchNextBatch(0);
+          } else {
+            const dataRes = await fetch('/data?since=' + latestTs + '&count=100');
+            const dataData = await dataRes.json();
+            const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
+            if (newEntries.length > 0) {
+              allLogs = allLogs.concat(newEntries);
+              latestTs = newEntries[newEntries.length-1].t;
+            }
+            updateChart();
+            calculateAverages();
           }
+          lastChartUpdate = now;
         }
-      }).catch(() => { isLoading = false; });
-    }
-
-    function fetchAllLogs() {
-      if (isLoading) return;
-      isLoading = true;
-      allLogs = [];
-      fetchNextBatch(0);
-    }
-
-    function fetchNewLogs() {
-      if (isLoading || !initialLoadDone) return;
-      isLoading = true;
-      fetch('/data?since=' + latestTs + '&count=100').then(r => r.json()).then(d => {
-        const newEntries = decodeLogs(d.logs, d.sentCount);
-        if (newEntries.length > 0) {
-          allLogs = allLogs.concat(newEntries);
-          latestTs = newEntries[newEntries.length-1].t;
-        }
-        updateChart();
-        updateLiveData(d);
-        isLoading = false;
-      }).catch(() => { isLoading = false; });
+      } catch (e) {
+        console.error("Fetch error", e);
+      } finally {
+        setTimeout(mainLoop, 1000); 
+      }
     }
 
     function update() {
-      console.log('Update called');
-      const now = Date.now();
-      // Remove debounce for initial load
-      if (initialLoadDone && (now - lastUpdateTime < 1000)) return; 
-      
-      if (!initialLoadDone) {
-        fetchAllLogs();
-      } else {
-        fetchNewLogs();
-      }
-      lastUpdateTime = now;
+       fetch('/status').then(r=>r.json()).then(d => updateLiveData(d));
     }
 
     function updateRefreshInterval() {
       const rate = parseInt(document.getElementById('refreshRate').value);
       refreshRate = rate;
-      if (refreshTimer) clearInterval(refreshTimer);
-      refreshTimer = setInterval(update, rate);
       fetch(`/mock/api?logInterval=${rate}`);
     }
 
@@ -377,9 +371,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
          refreshRate = d.logInterval;
          const sel = document.getElementById('refreshRate');
          if(sel) sel.value = refreshRate;
-         update();
+         mainLoop();
       })
-      .catch(e => console.error("Initial fetch failed:", e));
+      .catch(e => {
+         console.error("Initial fetch failed:", e);
+         mainLoop();
+      });
   </script>
 </body>
 </html>
@@ -466,8 +463,11 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
   <a href="/">&larr; Return to Dashboard</a>
 
   <script>
-    function load() {
-      fetch('/data').then(r => r.json()).then(d => {
+    async function mainLoop() {
+      try {
+        const statusRes = await fetch('/status');
+        const d = await statusRes.json();
+        
         document.getElementById('ip').textContent = d.ip;
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
@@ -479,38 +479,18 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('mTemp').value = d.temperature.toFixed(1);
         document.getElementById('mHum').value = d.humidity.toFixed(1);
         
-        // Hide/show simulation inputs
-        const mockFields = document.getElementById('mockFields');
-        mockFields.style.display = d.mock ? 'block' : 'none';
-      });
-      fetch('/mock/api').then(r => r.json()).then(d => {
-        document.getElementById('eggTurnInterval').value = d.eggTurnInterval;
-      });
+        document.getElementById('mockFields').style.display = d.mock ? 'block' : 'none';
+
+        const mockRes = await fetch('/mock/api');
+        const m = await mockRes.json();
+        document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
+      } catch (e) {
+        console.error("Fetch error", e);
+      } finally {
+        setTimeout(mainLoop, 5000); 
+      }
     }
 
-    function toggle(key) {
-      const isMock = document.getElementById('mockEnable').checked;
-      const isAuto = document.getElementById('autoSim').checked;
-      
-      if (key === 'enable' && isMock && isAuto) {
-          document.getElementById('autoSim').checked = false;
-      } else if (key === 'autosim' && isAuto && isMock) {
-          document.getElementById('mockEnable').checked = false;
-      }
-      
-      // Update UI visibility immediately
-      document.getElementById('mockFields').style.display = document.getElementById('mockEnable').checked ? 'block' : 'none';
-      
-      const newMock = document.getElementById('mockEnable').checked ? 1 : 0;
-      const newAuto = document.getElementById('autoSim').checked ? 1 : 0;
-      
-      fetch(`/mock/api?enable=${newMock}&autosim=${newAuto}`).then(load);
-    }
-    function save(key) {
-      const val = document.getElementById(key).value;
-      fetch(`/mock/api?${key}=${val}`).then(load);
-    }
-    // MOCK_HTML script
     function toggle(key) {
       const isMock = document.getElementById('mockEnable').checked;
       const isAuto = document.getElementById('autoSim').checked;
@@ -523,20 +503,26 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         endpoint += `autosim=${isAuto ? 1 : 0}`;
         if(isAuto && isMock) { document.getElementById('mockEnable').checked = false; endpoint += `&enable=0`; }
       }
-      fetch(endpoint).then(load);
+      
+      document.getElementById('mockFields').style.display = document.getElementById('mockEnable').checked ? 'block' : 'none';
+      fetch(endpoint).then(() => fetch('/status'));
     }
-    
+
+    function save(key) {
+      const val = document.getElementById(key).value;
+      fetch(`/mock/api?${key}=${val}`).then(() => fetch('/status'));
+    }
+
     function setMock() {
       if (!document.getElementById('mockEnable').checked) return;
       const t = document.getElementById('mTemp').value;
       const h = document.getElementById('mHum').value;
-      fetch(`/mock/api?temp=${t}&hum=${h}`).then(load);
+      fetch(`/mock/api?temp=${t}&hum=${h}`).then(() => fetch('/status'));
     }
     
     function reboot() { if(confirm('Reboot device?')) fetch('/reboot'); }
     
-    load();
-    setInterval(load, 5000);
+    mainLoop();
   </script>
 </body>
 </html>
