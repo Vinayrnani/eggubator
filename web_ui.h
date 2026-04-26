@@ -14,6 +14,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <style>
     :root {
       --primary: #1877f2;
@@ -165,26 +166,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     let mainChart;
-    let refreshTimer;
     let refreshRate = 5000;
-    let allLogs = [];
-    let latestTs = 0;
+    let latestTsMillis = 0;
     let initialLoadDone = false;
-    let isLoading = false;
-    let lastUpdateTime = 0;
 
-    function decodeLogs(hex, logCount) {
+    const db = new Dexie('EggubatorDB');
+    db.version(1).stores({
+      logs: 't, tsMillis, temp, hum, h, a, f, s'
+    });
+
+    async function cleanupDB() {
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      await db.logs.where('t').below(thirtyDaysAgo).delete();
+    }
+
+    function decodeLogs(hex, logCount, currentMillis) {
       if (!hex) return [];
       const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
       const entries = [];
+      const now = Date.now();
       for (let i = 0; i < logCount; i++) {
         const offset = i * 7;
         if (offset + 7 > bytes.length) break;
-        const ts = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
+        const tsMillis = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
+        const absoluteT = now - (currentMillis - tsMillis);
         const temp = bytes[offset+4] / 10 + 20;
         const hum = bytes[offset+5];
         const states = bytes[offset+6];
-        entries.push({ t: ts, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) === 2 ? -1 : ((states >> 3) & 3) });
+        entries.push({ t: absoluteT, tsMillis: tsMillis, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) === 2 ? -1 : ((states >> 3) & 3) });
       }
       return entries;
     }
@@ -226,6 +235,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false }
           },
           plugins: {
+            decimation: { enabled: true, algorithm: 'min-max' },
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
             zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
           }
@@ -255,20 +265,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       calculateAverages();
     }
 
-    function calculateAverages() {
-      const now = allLogs.length > 0 ? allLogs[allLogs.length-1].t : 0;
+    async function calculateAverages() {
+      const now = Date.now();
       const windows = [3600, 14400, 28800]; // 1h, 4h, 8h in seconds
       const ids = [['avgTemp1h', 'avgHum1h'], ['avgTemp4h', 'avgHum4h'], ['avgTemp8h', 'avgHum8h']];
       
-      windows.forEach((win, i) => {
-        const logs = allLogs.filter(l => (now - l.t)/1000 <= win);
+      for (let i = 0; i < windows.length; i++) {
+        const win = windows[i];
+        const logs = await db.logs.where('t').above(now - win * 1000).toArray();
         if (logs.length > 0) {
           const avgTemp = logs.reduce((sum, l) => sum + l.temp, 0) / logs.length;
           const avgHum = logs.reduce((sum, l) => sum + l.hum, 0) / logs.length;
           document.getElementById(ids[i][0]).textContent = avgTemp.toFixed(1) + '°C';
           document.getElementById(ids[i][1]).textContent = avgHum.toFixed(1) + '%';
         }
-      });
+      }
     }
 
     function confirmStageChange() {
@@ -284,33 +295,37 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    function updateChart() {
-      if (allLogs.length > 0) {
-        const now = allLogs[allLogs.length-1].t;
-        mainChart.data.datasets[0].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
-        mainChart.data.datasets[1].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
-        mainChart.data.datasets[2].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1.0 : 0.0 }));
-        mainChart.data.datasets[3].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 3.0 : 2.0 }));
-        mainChart.data.datasets[4].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 5.0 : 4.0 }));
-        mainChart.data.datasets[5].data = allLogs.map(l => ({ x: (l.t - now)/1000, y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
+    async function updateChart() {
+      const logs = await db.logs.orderBy('t').toArray();
+      if (logs.length > 0) {
+        const now = Date.now();
+        mainChart.data.datasets[0].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
+        mainChart.data.datasets[1].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
+        mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1.0 : 0.0 }));
+        mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 3.0 : 2.0 }));
+        mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 5.0 : 4.0 }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
         mainChart.update('none');
       }
     }
 
-    function fetchNextBatch(since) {
-      return fetch('/data?since=' + since + '&count=100').then(r => r.json()).then(d => {
-        const newEntries = decodeLogs(d.logs, d.sentCount);
-        allLogs = allLogs.concat(newEntries);
-        if (d.sentCount >= 100 && allLogs.length < d.totalLogs) {
-          const nextSince = newEntries.length > 0 ? newEntries[newEntries.length-1].t : since;
-          return fetchNextBatch(nextSince);
-        } else {
-          initialLoadDone = true;
-          latestTs = allLogs.length > 0 ? allLogs[allLogs.length-1].t : 0;
-          updateChart();
-          calculateAverages();
-        }
-      });
+    async function fetchNextBatch(since) {
+      const r = await fetch('/data?since=' + since + '&count=100');
+      const d = await r.json();
+      const newEntries = decodeLogs(d.logs, d.sentCount, d.millis);
+      if (newEntries.length > 0) {
+        await db.logs.bulkPut(newEntries);
+      }
+      if (d.sentCount >= 100) {
+        const nextSince = newEntries.length > 0 ? newEntries[newEntries.length-1].tsMillis : since;
+        await fetchNextBatch(nextSince);
+      } else {
+        initialLoadDone = true;
+        latestTsMillis = d.latestTs;
+        await updateChart();
+        await calculateAverages();
+        await cleanupDB();
+      }
     }
 
     let lastChartUpdate = 0;
@@ -326,15 +341,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           if (!initialLoadDone) {
             await fetchNextBatch(0);
           } else {
-            const dataRes = await fetch('/data?since=' + latestTs + '&count=100');
+            const dataRes = await fetch('/data?since=' + latestTsMillis + '&count=100');
             const dataData = await dataRes.json();
-            const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
+            const newEntries = decodeLogs(dataData.logs, dataData.sentCount, dataData.millis);
             if (newEntries.length > 0) {
-              allLogs = allLogs.concat(newEntries);
-              latestTs = newEntries[newEntries.length-1].t;
+              await db.logs.bulkPut(newEntries);
+              latestTsMillis = dataData.latestTs;
+              await updateChart();
+              await calculateAverages();
+              await cleanupDB();
             }
-            updateChart();
-            calculateAverages();
           }
           lastChartUpdate = now;
         }

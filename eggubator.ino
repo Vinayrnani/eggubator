@@ -162,6 +162,7 @@ void handleStatus() {
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
                 ",\"rssi\":" + String(WiFi.RSSI()) +
+                ",\"millis\":" + String(millis()) +
                 ",\"totalLogs\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) + "}";
 
   server.send(200, "application/json", json);
@@ -197,7 +198,8 @@ void handleData() {
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
-                ",\"rssi\":" + String(WiFi.RSSI());
+                ",\"rssi\":" + String(WiFi.RSSI()) +
+                ",\"millis\":" + String(millis());
 
   // Parse pagination params
   uint32_t since = 0;
