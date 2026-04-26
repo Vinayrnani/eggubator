@@ -32,7 +32,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .container { max-width: 1100px; margin: 0 auto; padding: 10px; }
     .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
-    .card { background: var(--card-bg); padding: 8px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.05); }
+    .card { background: var(--card-bg); padding: 5px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 5px; border: 1px solid rgba(0,0,0,0.05); }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
     .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
     .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
@@ -54,7 +54,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .chart-box canvas { width: 100% !important; height: 100% !important; }
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
-    h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
+    h3 { margin: 0 0 5px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
     .icon { font-size: 24px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
     .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
     .fan-active { color: #42b72a !important; }
