@@ -33,11 +33,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
     .card { background: var(--card-bg); padding: 8px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.05); }
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-    .stat-card { background: #ffffff; padding: 4px; border-radius: 10px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); line-height: 1.1; }
-    .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
-    .stat-value { font-size: 16px; font-weight: 800; margin-top: 1px; }
-    .target-val { font-size: 8px; color: #adb5bd; margin-top: 1px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
+    .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-color: var(--primary-soft); }
+    .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .stat-value { font-size: 16px; font-weight: 800; margin-top: 2px; }
+    .target-val { font-size: 9px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
     .on { color: var(--on); }
     .off { color: var(--off); }
     .idle { color: var(--idle); }
@@ -55,7 +56,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
     h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
-    .icon { font-size: 32px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
+    .icon { font-size: 24px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
     .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
     .fan-active { color: #42b72a !important; }
     .atomizer-active { color: #1877f2 !important; animation: drip 1s infinite; }
@@ -89,39 +90,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </select>
         <div style="font-size: 14px; color: var(--text-muted); font-weight: 600;">UPTIME: <span id="uptime" style="color:var(--text)">--</span></div>
       </div>
-      <div class="grid">
-        <div class="stat-card" style="grid-column: span 2; border-right: 1px solid #edf0f5; border-radius: 10px 0 0 10px;">
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
+        <div class="stat-card">
           <div class="stat-label">Temperature</div>
           <div class="stat-value" id="temp">--°C</div>
           <div class="target-val">TARGET <span id="targetTemp">--</span>°C</div>
         </div>
-        <div class="stat-card" style="grid-column: span 2; border-radius: 0 10px 10px 0;">
+        <div class="stat-card">
           <div class="stat-label">Humidity</div>
           <div class="stat-value" id="hum">--%</div>
           <div class="target-val">TARGET <span id="targetHum">--</span>%</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Heater</div>
-          <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Atomizer</div>
-          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-droplet"></i></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Fan</div>
-          <div class="stat-value" id="fanStat"><i class="icon fa-solid fa-fan"></i></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Turner</div>
-          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrows-left-right" id="turnerIcon"></i></div>
         </div>
       </div>
-        <div class="stat-card">
-          <div class="stat-label">Humidity</div>
-          <div class="stat-value" id="hum">--%</div>
-          <div class="target-val">TARGET <span id="targetHum">--</span>%</div>
-        </div>
+      <div class="grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="stat-card">
           <div class="stat-label">Heater</div>
           <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
@@ -150,24 +131,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <h3>Historical Averages</h3>
       <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card">
-          <div class="stat-label">1 Hour</div>
-          <div style="display:flex; justify-content: space-around;">
-             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp1h">--</div></div>
-             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum1h">--</div></div>
+          <div class="stat-label" style="margin-bottom: 6px;">1 Hour</div>
+          <div style="display:flex; justify-content: space-evenly; align-items: center;">
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp1h">--</div></div>
+             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum1h">--</div></div>
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">4 Hours</div>
-          <div style="display:flex; justify-content: space-around;">
-             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp4h">--</div></div>
-             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum4h">--</div></div>
+          <div class="stat-label" style="margin-bottom: 6px;">4 Hours</div>
+          <div style="display:flex; justify-content: space-evenly; align-items: center;">
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp4h">--</div></div>
+             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum4h">--</div></div>
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">8 Hours</div>
-          <div style="display:flex; justify-content: space-around;">
-             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp8h">--</div></div>
-             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum8h">--</div></div>
+          <div class="stat-label" style="margin-bottom: 6px;">8 Hours</div>
+          <div style="display:flex; justify-content: space-evenly; align-items: center;">
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp8h">--</div></div>
+             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum8h">--</div></div>
           </div>
         </div>
       </div>
