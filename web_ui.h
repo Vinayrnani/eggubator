@@ -59,14 +59,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .icon { font-size: 24px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
     .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
     .fan-active { color: #42b72a !important; }
-    .atomizer-active { color: #1877f2 !important; animation: drip 1s infinite; }
+    .atomizer-active { color: #1877f2 !important; animation: spray-puff 0.5s infinite; }
     .atomizer-idle { filter: grayscale(100%); opacity: 0.5; color: #8a8d91; }
     @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 15px #f39c12); } }
-    @keyframes drip { 
-        0% { transform: translateY(0); opacity: 1; }
-        50% { transform: translateY(10px); opacity: 0.5; }
-        100% { transform: translateY(20px); opacity: 0; }
-    }
+    @keyframes spray-puff { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
   </style>
 </head>
 <body>
@@ -101,8 +97,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Atomizer</div>
-          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-droplet"></i></div>
+          <div class="stat-label">Spray</div>
+          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-spray-can"></i></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Fan</div>
@@ -266,7 +262,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('uptime').textContent = d.uptime;
       
       document.getElementById('heaterStat').firstElementChild.className = 'icon fa-solid fa-lightbulb ' + (d.heater ? 'heater-active' : '');
-      document.getElementById('atomizerStat').firstElementChild.className = 'icon fa-solid fa-droplet ' + (d.atomizer ? 'atomizer-active' : 'atomizer-idle');
+      document.getElementById('atomizerStat').firstElementChild.className = 'icon fa-solid fa-spray-can ' + (d.atomizer ? 'atomizer-active' : 'atomizer-idle');
       document.getElementById('fanStat').firstElementChild.className = 'icon fa-solid fa-fan ' + (d.fan ? 'fan-active fa-spin' : '');
       
       const tIcon = document.getElementById('turnerIcon');
