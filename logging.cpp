@@ -5,6 +5,7 @@
 uint8_t currentBootId = 0;
 uint16_t currentSector = 0;
 uint16_t currentOffset = 0;
+uint32_t logsInCurrentBoot = 0;
 
 unsigned long lastLogTime = 0;
 float lastLoggedTemp = -100.0;
@@ -13,6 +14,7 @@ uint8_t lastLoggedStates = 0xFF;
 
 void initLogging(uint8_t bootId) {
   currentBootId = bootId;
+  logsInCurrentBoot = 0;
   
   EEPROM.get(EEPROM_CURRENT_SECTOR, currentSector);
   if (currentSector >= FLASH_NUM_SECTORS) {
@@ -85,6 +87,7 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   lastLogTime = millis();
 
   currentOffset++;
+  logsInCurrentBoot++;
 
   if (currentOffset >= LOGS_PER_SECTOR) {
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;

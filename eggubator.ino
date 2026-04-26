@@ -165,7 +165,8 @@ void handleStatus() {
                 ",\"rssi\":" + String(WiFi.RSSI()) +
                 ",\"uptimeSec\":" + String(uptimeSec) +
                 ",\"bootId\":" + String(currentBootId) +
-                ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) + "}";
+                ",\"currentSector\":" + String(currentSector) +
+                ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
   server.send(200, "application/json", json);
 }

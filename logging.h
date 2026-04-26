@@ -12,9 +12,9 @@ struct __attribute__((packed)) LogEntry {
 };
 
 #define FLASH_LOG_START 0x200000
-#define FLASH_SECTOR_SIZE_VAL 4096
+#define LOG_SECTOR_SIZE 4096
 #define FLASH_NUM_SECTORS 256
-#define LOGS_PER_SECTOR (FLASH_SECTOR_SIZE / sizeof(LogEntry))
+#define LOGS_PER_SECTOR (LOG_SECTOR_SIZE / sizeof(LogEntry))
 #define MAX_LOG_ENTRIES (LOGS_PER_SECTOR * FLASH_NUM_SECTORS)
 
 #define EEPROM_CURRENT_SECTOR 32
@@ -27,6 +27,8 @@ struct __attribute__((packed)) LogEntry {
 #define SET_TURNER(s,v) ((s) | (((v) & 0x03) << 3))
 
 extern uint8_t currentBootId;
+extern uint16_t currentSector;
+extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
 
 extern float lastLoggedTemp;

@@ -431,6 +431,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
 <head>
   <title>EGGubator - Advanced</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <style>
     body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #1c1e21; }
     .card { background: white; padding: 28px; border-radius: 20px; max-width: 540px; margin: 0 auto 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
@@ -456,7 +457,9 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-item"><span>IP Address</span><span id="ip">--</span></div>
       <div class="sys-item"><span>WiFi RSSI</span><span id="rssi">-- dBm</span></div>
       <div class="sys-item"><span>Free RAM</span><span id="heap">-- KB</span></div>
-      <div class="sys-item"><span>Active Logs</span><span id="logCount">--</span></div>
+      <div class="sys-item"><span>Current Sector</span><span id="sector">--</span></div>
+      <div class="sys-item"><span>Logs Since Boot</span><span id="bootLogs">--</span></div>
+      <div class="sys-item"><span>Dexie Records</span><span id="dexieCount">--</span></div>
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
       <div class="sys-item"><span>Uptime</span><span id="uptimeSys">--</span></div>
     </div>
@@ -506,6 +509,11 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
   <a href="/">&larr; Return to Dashboard</a>
 
   <script>
+    const db = new Dexie('EggubatorDB');
+    db.version(2).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s'
+    });
+
     async function mainLoop() {
       try {
         const statusRes = await fetch('/status');
@@ -514,7 +522,12 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('ip').textContent = d.ip;
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
-        document.getElementById('logCount').textContent = d.totalLogs;
+        document.getElementById('sector').textContent = d.currentSector;
+        document.getElementById('bootLogs').textContent = d.logsInCurrentBoot;
+        
+        const count = await db.logs.count();
+        document.getElementById('dexieCount').textContent = count;
+        
         document.getElementById('version').textContent = d.version;
         document.getElementById('uptimeSys').textContent = d.uptime;
         document.getElementById('mockEnable').checked = d.mock === 1;
