@@ -30,6 +30,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
     .container { max-width: 1100px; margin: 0 auto; padding: 10px; }
+    .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
+    h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
     .card { background: var(--card-bg); padding: 15px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); margin-bottom: 15px; border: 1px solid rgba(0,0,0,0.05); }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
     .stat-card { background: #ffffff; padding: 10px; border-radius: 16px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
@@ -70,7 +72,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="container">
     <div class="header">
       <h1>🥚 EGGubator 🐣</h1>
-      <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; font-weight:700;">
+      <select id="refreshRate" onchange="updateRefreshInterval()" style="position: absolute; right: 28px; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; font-weight:700;">
         <option value="1000">1s</option>
         <option value="2000">2s</option>
         <option value="5000">5s</option>
