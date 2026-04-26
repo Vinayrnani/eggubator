@@ -124,6 +124,36 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <h3>History & Device Activity</h3>
       <div class="chart-box"><canvas id="mainChart"></canvas></div>
     </div>
+    
+    <div class="card">
+      <h3>Historical Averages</h3>
+      <div class="grid">
+        <div class="stat-card">
+          <div class="stat-label">1h Temp</div>
+          <div class="stat-value" id="avgTemp1h">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">1h Hum</div>
+          <div class="stat-value" id="avgHum1h">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">4h Temp</div>
+          <div class="stat-value" id="avgTemp4h">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">4h Hum</div>
+          <div class="stat-value" id="avgHum4h">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">8h Temp</div>
+          <div class="stat-value" id="avgTemp8h">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">8h Hum</div>
+          <div class="stat-value" id="avgHum8h">--</div>
+        </div>
+      </div>
+    </div>
 
     <div class="footer">
       <strong>EGGubator System</strong> &copy; 2025 | <a href="/mock">Device Status & Advanced Config &rarr;</a>
@@ -218,6 +248,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const s = document.getElementById('stageSelect');
       s.value = d.stageLockdown ? 'lockdown' : 'incubation';
       s.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+      
+      calculateAverages();
+    }
+
+    function calculateAverages() {
+      const now = allLogs.length > 0 ? allLogs[allLogs.length-1].t : 0;
+      const windows = [3600, 14400, 28800]; // 1h, 4h, 8h in seconds
+      const ids = [['avgTemp1h', 'avgHum1h'], ['avgTemp4h', 'avgHum4h'], ['avgTemp8h', 'avgHum8h']];
+      
+      windows.forEach((win, i) => {
+        const logs = allLogs.filter(l => (now - l.t)/1000 <= win);
+        if (logs.length > 0) {
+          const avgTemp = logs.reduce((sum, l) => sum + l.temp, 0) / logs.length;
+          const avgHum = logs.reduce((sum, l) => sum + l.hum, 0) / logs.length;
+          document.getElementById(ids[i][0]).textContent = avgTemp.toFixed(1) + '°C';
+          document.getElementById(ids[i][1]).textContent = avgHum.toFixed(1) + '%';
+        }
+      });
     }
 
     function confirmStageChange() {
