@@ -78,8 +78,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <div class="card">
         <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <select id="stageSelect" class="badge badge-incubation" onchange="confirmStageChange()" style="border:none; outline:none; cursor:pointer; font-size:12px; font-weight:800; padding:6px 16px;">
-          <option value="incubation">Incubation Stage</option>
-          <option value="lockdown">Lockdown Stage</option>
+          <option value="incubation">Incubation Stage (1-18 days)</option>
+          <option value="lockdown">Lockdown Stage (19-21 days)</option>
         </select>
         <div style="font-size: 14px; color: var(--text-muted); font-weight: 600;">UPTIME: <span id="uptime" style="color:var(--text)">--</span></div>
       </div>
