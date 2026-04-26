@@ -32,6 +32,7 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 // Configurable timing (can be changed via web)
 unsigned long LOG_INTERVAL = 90000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
+unsigned long PULSE_ON_TIME = 3000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
 float TARGET_TEMP = 37.5;    // Default 37.5°C
@@ -79,6 +80,7 @@ struct DeviceSettings {
   bool stageLockdown;
   unsigned long logInterval;
   unsigned long turnInterval;
+  unsigned long pulseOnTime;
 };
 
 void saveSettings() {
@@ -90,6 +92,7 @@ void saveSettings() {
   if (settings.stageLockdown != stageLockdown) { settings.stageLockdown = stageLockdown; changed = true; }
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
   if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
+  if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
@@ -106,6 +109,12 @@ void loadSettings() {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
+    
+    if (settings.pulseOnTime >= 2000 && settings.pulseOnTime <= 5000) {
+      PULSE_ON_TIME = settings.pulseOnTime;
+    } else {
+      PULSE_ON_TIME = 3000;
+    }
     
     if (stageLockdown) {
       TARGET_TEMP = 37.5;
@@ -319,6 +328,11 @@ void handleSettingsApi() {
     EGG_TURN_INTERVAL = val;
     saveSettings();
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
+  } else if (server.hasArg("pulseOnTime")) {
+    unsigned long val = server.arg("pulseOnTime").toInt();
+    PULSE_ON_TIME = val;
+    saveSettings();
+    server.send(200, "text/plain", "Atomizer pulse on time set to " + String(val/1000) + "s");
   } else if (server.hasArg("stageType")) {
     String type = server.arg("stageType");
     if (type == "lockdown") {
@@ -341,6 +355,7 @@ void handleSettingsApi() {
                   ",\"hum\":" + String(mockHum) +
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
+                  ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
     server.send(200, "application/json", json);
   }

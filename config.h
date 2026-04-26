@@ -20,7 +20,7 @@ extern float TARGET_HUMIDITY;
 #define SERVO_PIN D5
 
 // Timing Constants
-#define PULSE_ON_TIME 3000
+extern unsigned long PULSE_ON_TIME;
 #define PULSE_OFF_TIME 10000
 #define FAN_EXTEND_TIME 3000
 extern unsigned long LOG_INTERVAL;

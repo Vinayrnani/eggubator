@@ -156,7 +156,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="footer">
-      <strong>EGGubator System</strong> &copy; 2025 | <a href="/settings">Device Status & Settings &rarr;</a>
+      <strong>EGGubator System</strong> &copy; 2026 | <a href="/settings">Device Status & Settings &rarr;</a>
     </div>
   </div>
 
@@ -510,6 +510,15 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
             <option value="180000">3 min</option>
           </select>
         </div>
+        <div class="row">
+          <label>Atomizer Spray Time</label>
+          <select id="pulseOnTime" onchange="save('pulseOnTime')">
+            <option value="2000">2 sec</option>
+            <option value="3000">3 sec</option>
+            <option value="4000">4 sec</option>
+            <option value="5000">5 sec</option>
+          </select>
+        </div>
     <button class="danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -548,6 +557,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         const m = await mockRes.json();
         document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
         document.getElementById('logInterval').value = m.logInterval;
+        document.getElementById('pulseOnTime').value = m.pulseOnTime;
       } catch (e) {
         console.error("Fetch error", e);
       } finally {
