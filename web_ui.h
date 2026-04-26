@@ -19,7 +19,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       --primary: #1877f2;
       --primary-dark: #166fe5;
       --primary-soft: #e7f3ff;
-      --bg: #f0f2f5;
+      --bg: #fdfaf6;
       --card-bg: #ffffff;
       --text: #1c1e21;
       --text-muted: #65676b;
@@ -70,16 +70,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="container">
     <div class="header">
       <h1>🥚 EGGubator 🐣</h1>
-      <div class="refresh-control">
-        <span>REFRESH RATE</span>
-        <select id="refreshRate" onchange="updateRefreshInterval()">
-          <option value="1000">1s</option>
-          <option value="2000">2s</option>
-          <option value="5000">5s</option>
-          <option value="10000">10s</option>
-          <option value="30000">30s</option>
-        </select>
-      </div>
+      <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; font-weight:700;">
+        <option value="1000">1s</option>
+        <option value="2000">2s</option>
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+        <option value="30000">30s</option>
+      </select>
     </div>
 
     <div class="card">
