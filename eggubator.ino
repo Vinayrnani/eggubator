@@ -71,6 +71,7 @@ Servo eggServo;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 19
+#define EEPROM_BOOT_ID 22
 #define EEPROM_STAGE 20
 #define EEPROM_LOG_INTERVAL 24
 #define EEPROM_TURN_INTERVAL 28
@@ -162,8 +163,9 @@ void handleStatus() {
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
                 ",\"rssi\":" + String(WiFi.RSSI()) +
-                ",\"millis\":" + String(millis()) +
-                ",\"totalLogs\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) + "}";
+                ",\"uptimeSec\":" + String(uptimeSec) +
+                ",\"bootId\":" + String(currentBootId) +
+                ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) + "}";
 
   server.send(200, "application/json", json);
 }
@@ -193,7 +195,7 @@ void handleData() {
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
-                ",\"totalLogs\":" + String(logFull ? MAX_LOG_ENTRIES : logIndex) +
+                ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
@@ -202,27 +204,29 @@ void handleData() {
                 ",\"millis\":" + String(millis());
 
   // Parse pagination params
-  uint32_t since = 0;
-  if (server.hasArg("since")) {
-    since = (uint32_t)server.arg("since").toInt();
+  uint8_t sinceBootId = 0;
+  if (server.hasArg("boot")) {
+    sinceBootId = (uint8_t)server.arg("boot").toInt();
   }
-  int count = 100;
+  uint32_t sinceTimeSec = 0;
+  if (server.hasArg("time")) {
+    sinceTimeSec = (uint32_t)server.arg("time").toInt();
+  }
+  
+  int count = 200;
   if (server.hasArg("count")) {
     count = server.arg("count").toInt();
-    if (count > 100) count = 100;
+    if (count > 200) count = 200;
     if (count < 1) count = 1;
   }
-  uint32_t latestTs = getLatestLogTimestamp();
-  uint32_t oldestTs = getOldestLogTimestamp();
-  int totalLogs = logFull ? MAX_LOG_ENTRIES : logIndex;
+  
+  uint32_t totalLogs = MAX_LOG_ENTRIES;
   
   String logHex = "";
-  int sentCount = getLogHex(logHex, count, since);
+  int sentCount = getLogHex(logHex, count, sinceBootId, sinceTimeSec);
   
-  json += ",\"totalLogs\":" + String(totalLogs) +
+  json += ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) +
           ",\"sentCount\":" + String(sentCount) +
-          ",\"latestTs\":" + String(latestTs) +
-          ",\"oldestTs\":" + String(oldestTs) +
           ",\"logs\":\"" + logHex + "\"}";
   
   server.send(200, "application/json", json);
@@ -535,8 +539,14 @@ void setup() {
   initDHT();
   eggServo.attach(SERVO_PIN);
 
-  initLogging();
   initRecovery();
+  
+  uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
+  bootId++;
+  EEPROM.write(EEPROM_BOOT_ID, bootId);
+  EEPROM.commit();
+
+  initLogging(bootId);
   loadSettings();
   connectWiFi();
   markBootSuccess();

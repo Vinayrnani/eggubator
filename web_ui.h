@@ -167,12 +167,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     let mainChart;
     let refreshRate = 5000;
-    let latestTsMillis = 0;
+    let latestBootId = 0;
+    let latestTimeSec = 0;
+    let currentUptimeSec = 0;
+    let currentBootId = 0;
     let initialLoadDone = false;
 
     const db = new Dexie('EggubatorDB');
-    db.version(1).stores({
-      logs: 't, tsMillis, temp, hum, h, a, f, s'
+    db.version(2).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s'
     });
 
     async function cleanupDB() {
@@ -180,20 +183,32 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       await db.logs.where('t').below(thirtyDaysAgo).delete();
     }
 
-    function decodeLogs(hex, logCount, currentMillis) {
+    function decodeLogs(hex, logCount) {
       if (!hex) return [];
       const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
       const entries = [];
       const now = Date.now();
+      const bootStartEstimate = now - (currentUptimeSec * 1000);
+      
       for (let i = 0; i < logCount; i++) {
-        const offset = i * 7;
-        if (offset + 7 > bytes.length) break;
-        const tsMillis = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
-        const absoluteT = now - (currentMillis - tsMillis);
+        const offset = i * 8;
+        if (offset + 8 > bytes.length) break;
+        const timeSec = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
         const temp = bytes[offset+4] / 10 + 20;
         const hum = bytes[offset+5];
         const states = bytes[offset+6];
-        entries.push({ t: absoluteT, tsMillis: tsMillis, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) === 2 ? -1 : ((states >> 3) & 3) });
+        const bootId = bytes[offset+7];
+
+        let absoluteT;
+        if (bootId === currentBootId) {
+          absoluteT = bootStartEstimate + (timeSec * 1000);
+        } else {
+          let diff = (currentBootId - bootId);
+          if (diff < 0) diff += 256;
+          absoluteT = bootStartEstimate - (diff * 86400 * 1000) + (timeSec * 1000);
+        }
+
+        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) === 2 ? -1 : ((states >> 3) & 3) });
       }
       return entries;
     }
@@ -309,19 +324,23 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    async function fetchNextBatch(since) {
-      const r = await fetch('/data?since=' + since + '&count=100');
+    async function fetchNextBatch(bootId, timeSec) {
+      const r = await fetch('/data?boot=' + bootId + '&time=' + timeSec + '&count=200');
       const d = await r.json();
-      const newEntries = decodeLogs(d.logs, d.sentCount, d.millis);
+      const newEntries = decodeLogs(d.logs, d.sentCount);
       if (newEntries.length > 0) {
         await db.logs.bulkPut(newEntries);
       }
-      if (d.sentCount >= 100) {
-        const nextSince = newEntries.length > 0 ? newEntries[newEntries.length-1].tsMillis : since;
-        await fetchNextBatch(nextSince);
+      if (d.sentCount >= 200) {
+        const nextBootId = newEntries.length > 0 ? newEntries[newEntries.length-1].bootId : bootId;
+        const nextTimeSec = newEntries.length > 0 ? newEntries[newEntries.length-1].timeSec : timeSec;
+        await fetchNextBatch(nextBootId, nextTimeSec);
       } else {
         initialLoadDone = true;
-        latestTsMillis = d.latestTs;
+        if (newEntries.length > 0) {
+          latestBootId = newEntries[newEntries.length-1].bootId;
+          latestTimeSec = newEntries[newEntries.length-1].timeSec;
+        }
         await updateChart();
         await calculateAverages();
         await cleanupDB();
@@ -334,19 +353,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       try {
         const statusRes = await fetch('/status');
         const statusData = await statusRes.json();
+        currentUptimeSec = statusData.uptimeSec;
+        currentBootId = statusData.bootId;
         updateLiveData(statusData);
 
         const now = Date.now();
         if (now - lastChartUpdate >= refreshRate) {
           if (!initialLoadDone) {
-            await fetchNextBatch(0);
+            const lastLogArr = await db.logs.orderBy('t').reverse().limit(1).toArray();
+            if (lastLogArr.length > 0) {
+               latestBootId = lastLogArr[0].bootId;
+               latestTimeSec = lastLogArr[0].timeSec;
+            }
+            await fetchNextBatch(latestBootId, latestTimeSec);
           } else {
-            const dataRes = await fetch('/data?since=' + latestTsMillis + '&count=100');
+            const dataRes = await fetch('/data?boot=' + latestBootId + '&time=' + latestTimeSec + '&count=200');
             const dataData = await dataRes.json();
-            const newEntries = decodeLogs(dataData.logs, dataData.sentCount, dataData.millis);
+            const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
             if (newEntries.length > 0) {
               await db.logs.bulkPut(newEntries);
-              latestTsMillis = dataData.latestTs;
+              latestBootId = newEntries[newEntries.length-1].bootId;
+              latestTimeSec = newEntries[newEntries.length-1].timeSec;
               await updateChart();
               await calculateAverages();
               await cleanupDB();
@@ -528,7 +555,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       const val = document.getElementById(key).value;
       fetch(`/mock/api?${key}=${val}`).then(() => fetch('/status'));
     }
-
+    
     function setMock() {
       if (!document.getElementById('mockEnable').checked) return;
       const t = document.getElementById('mTemp').value;
