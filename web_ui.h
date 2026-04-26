@@ -122,11 +122,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
-      <h3>History & Device Activity</h3>
-      <div class="chart-box"><canvas id="mainChart"></canvas></div>
-    </div>
-    
-    <div class="card">
       <h3>Historical Averages</h3>
       <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card">
@@ -154,6 +149,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>History & Device Activity</h3>
+      <div class="chart-box"><canvas id="mainChart"></canvas></div>
     </div>
 
     <div class="footer">
