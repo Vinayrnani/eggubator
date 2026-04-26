@@ -36,8 +36,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
     .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
     .stat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-color: var(--primary-soft); }
-    .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-    .stat-value { font-size: 24px; font-weight: 800; margin-top: 4px; }
+    .stat-label { font-size: 9px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .stat-value { font-size: 18px; font-weight: 800; margin-top: 2px; }
     .target-val { font-size: 11px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
     .on { color: var(--on); }
     .off { color: var(--off); }
