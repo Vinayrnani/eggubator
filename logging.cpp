@@ -37,8 +37,8 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   // Event-driven check
   bool significant = false;
   if (states != lastLoggedStates) significant = true;
-  else if (fabs(temp - lastLoggedTemp) > 0.11) significant = true; // Use 0.11 to avoid flutter at exactly 0.1
-  else if (fabs(hum - lastLoggedHum) > 1.01) significant = true;
+  else if (fabs(temp - lastLoggedTemp) > 0.31) significant = true; // Use 0.31 to avoid flutter at exactly 0.3
+  else if (fabs(hum - lastLoggedHum) > 3.01) significant = true;
   else if (lastLogTime == 0 || (millis() - lastLogTime >= forceInterval)) significant = true;
 
   if (!significant) return false;
