@@ -117,7 +117,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div class="stat-card">
           <div class="stat-label">Turner</div>
-          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrows-left-right" id="turnerIcon"></i></div>
+          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrow-up" id="turnerIcon"></i></div>
         </div>
       </div>
     </div>
