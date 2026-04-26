@@ -29,7 +29,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-    .container { max-width: 940px; margin: 0 auto; padding: 20px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; }
     .card { background: var(--card-bg); padding: 28px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); margin-bottom: 24px; border: 1px solid rgba(0,0,0,0.05); }
@@ -85,8 +85,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
-      <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <div id="stageBadge" class="badge">Loading...</div>
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <select id="stageSelect" class="badge badge-incubation" onchange="confirmStageChange()" style="border:none; outline:none; cursor:pointer; font-size:12px; font-weight:800; padding:6px 16px;">
+          <option value="incubation">Incubation Stage</option>
+          <option value="lockdown">Lockdown Stage</option>
+        </select>
         <div style="font-size: 14px; color: var(--text-muted); font-weight: 600;">UPTIME: <span id="uptime" style="color:var(--text)">--</span></div>
       </div>
       <div class="grid">
@@ -116,17 +119,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           <div class="stat-label">Turner</div>
           <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrows-left-right" id="turnerIcon"></i></div>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Incubation Stage</h3>
-      <div style="display:flex; gap:12px;">
-        <select id="stageSelect" style="flex:1; background: #fcfdfe;">
-          <option value="incubation">Incubation Stage (Days 1-18)</option>
-          <option value="lockdown">Lockdown Stage (Days 19-21)</option>
-        </select>
-        <button onclick="setStage()">Update Device Stage</button>
       </div>
     </div>
 
@@ -184,7 +176,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { type: 'linear', title: { display: true, text: 'Time (seconds ago)', font: { weight: 'bold' } }, grid: { color: '#f0f0f0' } },
+            x: { 
+              type: 'linear', 
+              min: -2700, 
+              max: 0,
+              title: { display: true, text: 'Time', font: { weight: 'bold' } }, 
+              grid: { color: '#f0f0f0' },
+              ticks: {
+                callback: function(value) {
+                   const now = Date.now();
+                   const date = new Date(now + value * 1000);
+                   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                }
+              }
+            },
             yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Temp °C', font: { weight: 'bold' } } },
             yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, grid: { display: false } },
             yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false }
@@ -212,7 +217,22 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       tIcon.style.transform = (d.servo == 1 ? 'rotate(-45deg)' : (d.servo == 2 ? 'rotate(45deg)' : 'rotate(0deg)'));
       tIcon.style.color = (d.servo !== 0 ? 'var(--on)' : 'var(--idle)');
 
-      const b = document.getElementById('stageBadge'); b.textContent = d.stageLockdown ? 'Lockdown Stage' : 'Incubation Stage'; b.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+      const s = document.getElementById('stageSelect');
+      s.value = d.stageLockdown ? 'lockdown' : 'incubation';
+      s.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+    }
+
+    function confirmStageChange() {
+      const s = document.getElementById('stageSelect');
+      const val = s.value;
+      if(confirm('Are you sure you want to change to ' + (val === 'lockdown' ? 'Lockdown' : 'Incubation') + ' Stage?')) {
+        fetch('/mock/api?stageType=' + val)
+          .then(() => update())
+          .catch(e => { console.error("Stage update failed:", e); load(); });
+      } else {
+        // Revert dropdown to previous state if cancelled (via reload/fetch)
+        update(); 
+      }
     }
 
     function updateChart() {
