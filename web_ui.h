@@ -33,12 +33,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
     .card { background: var(--card-bg); padding: 8px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.05); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
-    .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-color: var(--primary-soft); }
-    .stat-label { font-size: 9px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-    .stat-value { font-size: 18px; font-weight: 800; margin-top: 2px; }
-    .target-val { font-size: 11px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+    .stat-card { background: #ffffff; padding: 4px; border-radius: 10px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); line-height: 1.1; }
+    .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
+    .stat-value { font-size: 16px; font-weight: 800; margin-top: 1px; }
+    .target-val { font-size: 8px; color: #adb5bd; margin-top: 1px; font-weight: 600; }
     .on { color: var(--on); }
     .off { color: var(--off); }
     .idle { color: var(--idle); }
@@ -91,11 +90,33 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <div style="font-size: 14px; color: var(--text-muted); font-weight: 600;">UPTIME: <span id="uptime" style="color:var(--text)">--</span></div>
       </div>
       <div class="grid">
-        <div class="stat-card">
+        <div class="stat-card" style="grid-column: span 2; border-right: 1px solid #edf0f5; border-radius: 10px 0 0 10px;">
           <div class="stat-label">Temperature</div>
           <div class="stat-value" id="temp">--°C</div>
           <div class="target-val">TARGET <span id="targetTemp">--</span>°C</div>
         </div>
+        <div class="stat-card" style="grid-column: span 2; border-radius: 0 10px 10px 0;">
+          <div class="stat-label">Humidity</div>
+          <div class="stat-value" id="hum">--%</div>
+          <div class="target-val">TARGET <span id="targetHum">--</span>%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Heater</div>
+          <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Atomizer</div>
+          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-droplet"></i></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Fan</div>
+          <div class="stat-value" id="fanStat"><i class="icon fa-solid fa-fan"></i></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Turner</div>
+          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrows-left-right" id="turnerIcon"></i></div>
+        </div>
+      </div>
         <div class="stat-card">
           <div class="stat-label">Humidity</div>
           <div class="stat-value" id="hum">--%</div>
