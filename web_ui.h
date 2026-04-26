@@ -51,7 +51,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .refresh-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 600; }
     .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; appearance: auto; -webkit-appearance: auto; }
     .refresh-control select option { color: black; }
-    .chart-box { height: 480px; margin-top: 10px; position: relative; }
+    .chart-box { height: 480px; width: 100%; margin-top: 10px; position: relative; }
     .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
     .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
     h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
@@ -176,9 +176,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { 
+              x: { 
               type: 'linear', 
-              min: -2700, 
+              min: -300, 
               max: 0,
               title: { display: true, text: 'Time', font: { weight: 'bold' } }, 
               grid: { color: '#f0f0f0' },
