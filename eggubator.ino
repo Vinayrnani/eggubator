@@ -71,7 +71,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 Servo eggServo;
 
 // EEPROM addresses for settings
-#define EEPROM_SETTINGS_MAGIC 19
+#define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
 #define SETTINGS_MAGIC_VAL 0xA5
 
