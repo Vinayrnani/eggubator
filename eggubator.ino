@@ -406,7 +406,7 @@ void autoControl() {
 void rotateEggs() {
   static bool turning = false;
   static unsigned long turnStartTime = 0;
-  static int currentAngle = 0;
+  static bool restingAt45 = true; // State: true=45deg, false=135deg
   
   // Disable egg turner during lockdown stage
   if (stageLockdown) {
@@ -419,36 +419,32 @@ void rotateEggs() {
   if (servoEnabled && servoMode == AUTO && !turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
     turning = true;
     turnStartTime = millis();
-    currentAngle = SERVO_CENTER - SERVO_ANGLE;
-    eggServo.write(currentAngle);
-    servoPosition = -1;
     Serial.println("Egg turn started");
   }
   
-  if (turning && (millis() - turnStartTime < EGG_TURN_DURATION)) {
+  if (turning) {
     unsigned long elapsed = millis() - turnStartTime;
-    int targetAngle;
+    int startAngle = restingAt45 ? 45 : 135;
+    int endAngle = restingAt45 ? 135 : 45;
     
-    if (elapsed < EGG_TURN_DURATION / 2) {
-      targetAngle = map(elapsed, 0, EGG_TURN_DURATION/2, SERVO_CENTER - SERVO_ANGLE, SERVO_CENTER + SERVO_ANGLE);
-      servoPosition = 1;
-    } else {
-      targetAngle = map(elapsed, EGG_TURN_DURATION/2, EGG_TURN_DURATION, SERVO_CENTER + SERVO_ANGLE, SERVO_CENTER - SERVO_ANGLE);
-      servoPosition = -1;
-    }
+    int targetAngle = map(elapsed, 0, EGG_TURN_DURATION, startAngle, endAngle);
+    eggServo.write(targetAngle);
     
-    if (targetAngle != currentAngle) {
-      currentAngle = targetAngle;
-      eggServo.write(targetAngle);
+    // Update visual position indicator
+    servoPosition = restingAt45 ? 2 : 1; // 2=Right(135), 1=Left(45)
+    
+    if (elapsed >= EGG_TURN_DURATION) {
+      eggServo.write(endAngle);
+      turning = false;
+      restingAt45 = !restingAt45; // Toggle resting state
+      servoPosition = restingAt45 ? 1 : 2;
+      lastServoTurn = millis();
+      Serial.println("Egg turn completed");
     }
-  }
-  
-  if (turning && (millis() - turnStartTime >= EGG_TURN_DURATION)) {
-    turning = false;
-    eggServo.write(SERVO_CENTER - SERVO_ANGLE);
-    servoPosition = -1;
-    lastServoTurn = millis();
-    Serial.println("Egg turn completed");
+  } else {
+    // Hold position
+    eggServo.write(restingAt45 ? 45 : 135);
+    servoPosition = restingAt45 ? 1 : 2;
   }
   
   if (!servoEnabled || servoMode == KILL_OFF) {
