@@ -30,7 +30,7 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 #define AUTO 1
 
 // Configurable timing (can be changed via web)
-unsigned long LOG_INTERVAL = 10000;
+unsigned long LOG_INTERVAL = 90000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
@@ -71,10 +71,7 @@ Servo eggServo;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 19
-#define EEPROM_BOOT_ID 22
-#define EEPROM_STAGE 20
-#define EEPROM_LOG_INTERVAL 24
-#define EEPROM_TURN_INTERVAL 28
+#define EEPROM_BOOT_ID 12
 #define SETTINGS_MAGIC_VAL 0xA5
 
 struct DeviceSettings {
@@ -133,8 +130,8 @@ void handleRoot() {
   server.send(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
-void handleMockPage() {
-  server.send(200, "text/html; charset=utf-8", MOCK_HTML);
+void handleSettingsPage() {
+  server.send(200, "text/html; charset=utf-8", SETTINGS_HTML);
 }
 
 void handleStatus() {
@@ -295,7 +292,7 @@ void handleOtaUpdate() {
   performUpdate();
 }
 
-void handleMockSensor() {
+void handleSettingsApi() {
   if (server.hasArg("autosim")) {
     bool enable = (server.arg("autosim") == "1");
     setAutoSim(enable);
@@ -557,13 +554,13 @@ void setup() {
 
 // Setup web server
   server.on("/", handleRoot);
-  server.on("/mock", handleMockPage);
+  server.on("/settings", handleSettingsPage);
   server.on("/status", handleStatus);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/ota/check", handleOtaCheck);
   server.on("/ota/update", handleOtaUpdate);
-  server.on("/mock/api", handleMockSensor);
+  server.on("/settings/api", handleSettingsApi);
   server.on("/reboot", handleReboot);
   server.on("/rollback", handleRollback);
   server.on("/recovery", handleRecovery);
@@ -578,6 +575,7 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
+  MDNS.update();
   server.handleClient();
 
   if (millis() - lastReadTime > 2000) {

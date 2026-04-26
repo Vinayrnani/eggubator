@@ -156,7 +156,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="footer">
-      <strong>EGGubator System</strong> &copy; 2025 | <a href="/mock">Device Status & Advanced Config &rarr;</a>
+      <strong>EGGubator System</strong> &copy; 2025 | <a href="/settings">Device Status & Settings &rarr;</a>
     </div>
   </div>
 
@@ -297,7 +297,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const s = document.getElementById('stageSelect');
       const val = s.value;
       if(confirm('Are you sure you want to change to ' + (val === 'lockdown' ? 'Lockdown' : 'Incubation') + ' Stage?')) {
-        fetch('/mock/api?stageType=' + val)
+        fetch('/settings/api?stageType=' + val)
           .then(() => update())
           .catch(e => { console.error("Stage update failed:", e); load(); });
       } else {
@@ -391,12 +391,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     function updateRefreshInterval() {
       const rate = parseInt(document.getElementById('refreshRate').value);
       refreshRate = rate;
-      fetch(`/mock/api?logInterval=${rate}`);
+      fetch(`/settings/api?logInterval=${rate}`);
     }
 
     function setStage() {
       const s = document.getElementById('stageSelect').value;
-      fetch(`/mock/api?stageType=${s}`)
+      fetch(`/settings/api?stageType=${s}`)
         .then(() => update())
         .catch(e => console.error("Stage update failed:", e));
     }
@@ -404,7 +404,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     initCharts();
     
     // Set initial refresh rate
-    fetch('/mock/api')
+    fetch('/settings/api')
       .then(r => r.json())
       .then(d => {
          refreshRate = d.logInterval;
@@ -421,11 +421,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-const char MOCK_HTML[] PROGMEM = R"rawliteral(
+const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EGGubator - Advanced</title>
+  <title>EGGubator - Settings</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <style>
@@ -499,6 +499,17 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
             <option value="14400000">4 hours</option>
           </select>
         </div>
+        <div class="row">
+          <label>Log Heartbeat Interval</label>
+          <select id="logInterval" onchange="save('logInterval')">
+            <option value="5000">5 sec</option>
+            <option value="10000">10 sec</option>
+            <option value="30000">30 sec</option>
+            <option value="60000">60 sec</option>
+            <option value="90000">90 sec</option>
+            <option value="180000">3 min</option>
+          </select>
+        </div>
     <button class="danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -533,9 +544,10 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
         
         document.getElementById('mockFields').style.display = d.mock ? 'block' : 'none';
 
-        const mockRes = await fetch('/mock/api');
+        const mockRes = await fetch('/settings/api');
         const m = await mockRes.json();
         document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
+        document.getElementById('logInterval').value = m.logInterval;
       } catch (e) {
         console.error("Fetch error", e);
       } finally {
@@ -547,7 +559,7 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
       const isMock = document.getElementById('mockEnable').checked;
       const isAuto = document.getElementById('autoSim').checked;
       
-      let endpoint = `/mock/api?`;
+      let endpoint = `/settings/api?`;
       if (key === 'enable') {
         endpoint += `enable=${isMock ? 1 : 0}`;
         if(isMock && isAuto) { document.getElementById('autoSim').checked = false; endpoint += `&autosim=0`; }
@@ -562,14 +574,14 @@ const char MOCK_HTML[] PROGMEM = R"rawliteral(
 
     function save(key) {
       const val = document.getElementById(key).value;
-      fetch(`/mock/api?${key}=${val}`).then(() => fetch('/status'));
+      fetch(`/settings/api?${key}=${val}`).then(() => fetch('/status'));
     }
     
     function setMock() {
       if (!document.getElementById('mockEnable').checked) return;
       const t = document.getElementById('mTemp').value;
       const h = document.getElementById('mHum').value;
-      fetch(`/mock/api?temp=${t}&hum=${h}`).then(() => fetch('/status'));
+      fetch(`/settings/api?temp=${t}&hum=${h}`).then(() => fetch('/status'));
     }
     
     function reboot() { if(confirm('Reboot device?')) fetch('/reboot'); }
