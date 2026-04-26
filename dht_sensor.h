@@ -23,8 +23,8 @@ const float SIM_AMBIENT_HUM = 35.0;
 const float SIM_TARGET_TEMP = 39.0;
 const float SIM_TARGET_HUM = 70.0;
 const float SIM_FAN_COOL = 0.3;
-const float SIM_SPEED_RISE = 0.08;
-const float SIM_SPEED_DROP = 0.015;
+const float SIM_SPEED_RISE = 0.04;
+const float SIM_SPEED_DROP = 0.0075;
 const float SIM_NOISE_TEMP = 0.1;
 const float SIM_NOISE_HUM = 1.0;
 
