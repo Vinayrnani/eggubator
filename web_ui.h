@@ -69,7 +69,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
   <div class="container">
     <div class="header">
-      <h1>EGGubator</h1>
+      <h1>🥚 EGGubator 🐣</h1>
       <div class="refresh-control">
         <span>REFRESH RATE</span>
         <select id="refreshRate" onchange="updateRefreshInterval()">
@@ -127,30 +127,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     
     <div class="card">
       <h3>Historical Averages</h3>
-      <div class="grid">
+      <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card">
-          <div class="stat-label">1h Temp</div>
-          <div class="stat-value" id="avgTemp1h">--</div>
+          <div class="stat-label">1 Hour</div>
+          <div style="display:flex; justify-content: space-around;">
+             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp1h">--</div></div>
+             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum1h">--</div></div>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">1h Hum</div>
-          <div class="stat-value" id="avgHum1h">--</div>
+          <div class="stat-label">4 Hours</div>
+          <div style="display:flex; justify-content: space-around;">
+             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp4h">--</div></div>
+             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum4h">--</div></div>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">4h Temp</div>
-          <div class="stat-value" id="avgTemp4h">--</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">4h Hum</div>
-          <div class="stat-value" id="avgHum4h">--</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">8h Temp</div>
-          <div class="stat-value" id="avgTemp8h">--</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">8h Hum</div>
-          <div class="stat-value" id="avgHum8h">--</div>
+          <div class="stat-label">8 Hours</div>
+          <div style="display:flex; justify-content: space-around;">
+             <div><div class="stat-label" style="font-size:9px;">Temp</div><div class="stat-value" id="avgTemp8h">--</div></div>
+             <div><div class="stat-label" style="font-size:9px;">Hum</div><div class="stat-value" id="avgHum8h">--</div></div>
+          </div>
         </div>
       </div>
     </div>
