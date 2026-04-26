@@ -110,7 +110,7 @@ void loadSettings() {
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
     
-    if (settings.pulseOnTime >= 2000 && settings.pulseOnTime <= 5000) {
+    if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
       PULSE_ON_TIME = settings.pulseOnTime;
     } else {
       PULSE_ON_TIME = 3000;
