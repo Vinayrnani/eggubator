@@ -33,11 +33,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
     h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
     .card { background: var(--card-bg); padding: 8px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.05); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 2px; }
-    .stat-card { background: #ffffff; padding: 2px; border-radius: 8px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .stat-label { font-size: 6px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
-    .stat-value { font-size: 12px; font-weight: 800; margin-top: 0px; }
-    .target-val { font-size: 6px; color: #adb5bd; margin-top: 1px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
+    .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .stat-value { font-size: 16px; font-weight: 800; margin-top: 2px; }
+    .target-val { font-size: 9px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
     .on { color: var(--on); }
     .off { color: var(--off); }
     .idle { color: var(--idle); }
