@@ -248,7 +248,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
-            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }, limits: { x: { min: -14400, max: 0 } } }
           }
         }
       });
@@ -319,7 +319,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.f ? 5.0 : 4.0 }));
         mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
         
-        mainChart.options.scales.x.min = -14400; // 4 hours max zoom out
         mainChart.update('none');
       }
     }
