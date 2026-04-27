@@ -307,15 +307,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     async function updateChart() {
-      const logs = await db.logs.orderBy('t').toArray();
+      const now = Date.now();
+      const viewStart = now - (4 * 3600 * 1000); // 4 hours ago
+      
+      const logs = await db.logs.where('t').above(viewStart).toArray();
       if (logs.length > 0) {
-        const now = Date.now();
-        mainChart.data.datasets[0].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
-        mainChart.data.datasets[1].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
-        mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h ? 1.0 : 0.0 }));
-        mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.a ? 3.0 : 2.0 }));
-        mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.f ? 5.0 : 4.0 }));
-        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
+        mainChart.data.datasets[0].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.temp }));
+        mainChart.data.datasets[1].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.hum }));
+        mainChart.data.datasets[2].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.h ? 1.0 : 0.0 }));
+        mainChart.data.datasets[3].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.a ? 3.0 : 2.0 }));
+        mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.f ? 5.0 : 4.0 }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
+        
+        mainChart.options.scales.x.min = -14400; // 4 hours max zoom out
         mainChart.update('none');
       }
     }
