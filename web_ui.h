@@ -404,12 +404,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     function updateRefreshInterval() {
       const rate = parseInt(document.getElementById('refreshRate').value);
       refreshRate = rate;
-      fetch(`/settings/api?logInterval=${rate}`);
+      // Removed fetch to ESP to prevent EEPROM wear
     }
 
     function setStage() {
       const s = document.getElementById('stageSelect').value;
-      fetch(`/settings/api?stageType=${s}`)
+      fetch('/settings/api?stageType=' + s)
         .then(() => update())
         .catch(e => console.error("Stage update failed:", e));
     }
@@ -417,18 +417,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     initCharts();
     
     // Set initial refresh rate
-    fetch('/settings/api')
-      .then(r => r.json())
-      .then(d => {
-         refreshRate = d.logInterval;
-         const sel = document.getElementById('refreshRate');
-         if(sel) sel.value = refreshRate;
-         mainLoop();
-      })
-      .catch(e => {
-         console.error("Initial fetch failed:", e);
-         mainLoop();
-      });
+    refreshRate = 5000;
+    const sel = document.getElementById('refreshRate');
+    if(sel) sel.value = refreshRate;
+    mainLoop();
   </script>
 </body>
 </html>
