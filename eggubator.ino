@@ -144,6 +144,10 @@ void handleSettingsPage() {
   server.send(200, "text/html; charset=utf-8", SETTINGS_HTML);
 }
 
+void handleDexiePage() {
+  server.send(200, "text/html; charset=utf-8", DEXIE_HTML);
+}
+
 void handleStatus() {
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
@@ -596,6 +600,7 @@ void setup() {
 // Setup web server
   server.on("/", handleRoot);
   server.on("/settings", handleSettingsPage);
+  server.on("/dexie", handleDexiePage);
   server.on("/status", handleStatus);
   server.on("/data", handleData);
   server.on("/control", handleControl);

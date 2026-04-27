@@ -615,7 +615,38 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       }
     }
     
-    mainLoop();
+mainLoop();
+   </script>
+ </body>
+ </html>
+ )rawliteral";
+
+const char DEXIE_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EGGubator - Dexie DB</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/indexeddb-debug-bar@latest/dist/browser/indexeddb-debug-bar-browser.umd.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f0f2f5; }
+    .header { background: linear-gradient(135deg, #1877f2, #166fe5); padding: 20px; color: white; text-align: center; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .header a { color: white; text-decoration: none; font-weight: 700; }
+    #idb-debug-bar { position: relative !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🥚 EGGubator DB</h1>
+    <a href="/">&larr; Dashboard</a>
+  </div>
+  <script>
+    const db = new Dexie('EggubatorDB');
+    db.version(2).stores({ logs: 't, timeSec, bootId, temp, hum, h, a, f, s' });
+    new IndexedDBDebugBar(db, { position: 'left', isCollapsed: false });
   </script>
 </body>
 </html>
