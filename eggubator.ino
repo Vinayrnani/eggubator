@@ -536,6 +536,25 @@ void handleRecoveryReset() {
   ESP.restart();
 }
 
+void handleClearFlash() {
+  uint16_t startSector = currentSector;
+  
+  // Erase from sector 0 up to currentSector
+  for (uint16_t i = 0; i <= currentSector; i++) {
+    ESP.flashEraseSector((FLASH_LOG_START + (i * LOG_SECTOR_SIZE)) / LOG_SECTOR_SIZE);
+    ESP.wdtFeed();
+  }
+  
+  currentSector = 0;
+  currentOffset = 0;
+  logsInCurrentBoot = 0;
+  
+  EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
+  EEPROM.commit();
+  
+  server.send(200, "text/plain", "Flash cleared up to sector " + String(startSector) + ". Pointers reset to 0.");
+}
+
 // ============================================
 // MAIN SETUP
 // ============================================
@@ -573,6 +592,7 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/data", handleData);
   server.on("/control", handleControl);
+  server.on("/settings/clear", handleClearFlash);
   server.on("/ota/check", handleOtaCheck);
   server.on("/ota/update", handleOtaUpdate);
   server.on("/settings/api", handleSettingsApi);

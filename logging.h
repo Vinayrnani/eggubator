@@ -28,6 +28,7 @@ struct __attribute__((packed)) LogEntry {
 
 extern uint8_t currentBootId;
 extern uint16_t currentSector;
+extern uint16_t currentOffset;
 extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
 
