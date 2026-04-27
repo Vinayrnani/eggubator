@@ -204,7 +204,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           absoluteT = bootStartEstimate - (diff * 86400 * 1000) + (timeSec * 1000);
         }
 
-        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) === 2 ? -1 : ((states >> 3) & 3) });
+        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
       }
       return entries;
     }
@@ -327,7 +327,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         mainChart.data.datasets[2].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.h ? 1.0 : 0.0 }));
         mainChart.data.datasets[3].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.a ? 3.0 : 2.0 }));
         mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.f ? 5.0 : 4.0 }));
-        mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == -1 ? 6.0 : (l.s == 0 ? 7.0 : 8.0)) }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == 1 ? 6.0 : (l.s == 2 ? 8.0 : 7.0)) }));
         
         mainChart.update('none');
       }

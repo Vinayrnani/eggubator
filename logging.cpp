@@ -55,9 +55,9 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   uint8_t h_encoded = (uint8_t)(hum + 0.5);
 
   uint8_t turner_val = 0;
-  if (servo == -1) turner_val = 2;
-  else if (servo == 0) turner_val = 0;
-  else if (servo == 1) turner_val = 1;
+  if (servo == 1) turner_val = 1;
+  else if (servo == 2) turner_val = 2;
+  else turner_val = 0;
 
   uint8_t states = 0;
   if (heater) states |= STATE_HEATER;
