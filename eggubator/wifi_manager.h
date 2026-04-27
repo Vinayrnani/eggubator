@@ -12,6 +12,7 @@ void connectWiFi() {
   Serial.print("Connecting to ");
   Serial.println(WIFI_SSID);
   
+  WiFi.hostname("EGGubator");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);

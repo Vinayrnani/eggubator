@@ -10,6 +10,7 @@
 #include <ESP8266HTTPClient.h>
 #include <Servo.h>
 #include <EEPROM.h>
+#include <ESP8266mDNS.h>
 
 #include "config.h"
 #include "dht_sensor.h"
@@ -581,6 +582,12 @@ void setup() {
   initLogging(bootId);
   loadSettings();
   connectWiFi();
+
+  // Start mDNS responder for EGGubator.local
+  if (MDNS.begin("EGGubator")) {
+    Serial.println("mDNS responder started: EGGubator.local");
+  }
+
   markBootSuccess();
 
   Serial.print("Firmware: ");
@@ -610,8 +617,8 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
-  MDNS.update();
   server.handleClient();
+  MDNS.update();
 
   if (millis() - lastReadTime > 2000) {
     if (autoSimMode) {

@@ -248,7 +248,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
-            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }, limits: { x: { min: -14400, max: 0 } } }
+            tooltip: {
+              callbacks: {
+                title: function(context) {
+                  const now = Date.now();
+                  const relSeconds = context[0].parsed.x;
+                  const absTime = new Date(now + relSeconds * 1000);
+                  return absTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                }
+              }
+            },
+            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
           }
         }
       });
