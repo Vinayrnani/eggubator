@@ -255,6 +255,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                   const relSeconds = context[0].parsed.x;
                   const absTime = new Date(now + relSeconds * 1000);
                   return absTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                },
+                label: function(context) {
+                  const idx = context.datasetIndex;
+                  const val = context.raw.y;
+                  if (idx === 2) return 'Heater: ' + (val > 0 ? 'ON' : 'OFF');
+                  if (idx === 3) return 'Atomizer: ' + (val > 2 ? 'ON' : 'OFF');
+                  if (idx === 4) return 'Fan: ' + (val > 4 ? 'ON' : 'OFF');
+                  if (idx === 5) return 'Turner: ' + (val === 7 ? 'Idle' : (val === 6 ? '← Left' : 'Right →'));
+                  return null;
+                },
+                filter: function(context) {
+                  return context.datasetIndex >= 2;
                 }
               }
             },
