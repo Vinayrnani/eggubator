@@ -123,19 +123,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" style="margin-bottom: 6px;">4 Hours</div>
-          <div style="display:flex; justify-content: space-evenly; align-items: center;">
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp4h">--</div></div>
-             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum4h">--</div></div>
-          </div>
-        </div>
-        <div class="stat-card">
           <div class="stat-label" style="margin-bottom: 6px;">8 Hours</div>
           <div style="display:flex; justify-content: space-evenly; align-items: center;">
              <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp8h">--</div></div>
              <div style="width:1px; height:20px; background:#e0e4e9;"></div>
              <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum8h">--</div></div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" style="margin-bottom: 6px;">12 Hours</div>
+          <div style="display:flex; justify-content: space-evenly; align-items: center;">
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp12h">--</div></div>
+             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
+             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum12h">--</div></div>
           </div>
         </div>
       </div>
@@ -300,8 +300,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     async function calculateAverages() {
       const now = Date.now();
-      const windows = [3600, 14400, 28800]; // 1h, 4h, 8h in seconds
-      const ids = [['avgTemp1h', 'avgHum1h'], ['avgTemp4h', 'avgHum4h'], ['avgTemp8h', 'avgHum8h']];
+      const windows = [3600, 28800, 43200]; // 1h, 8h, 12h in seconds
+      const ids = [['avgTemp1h', 'avgHum1h'], ['avgTemp8h', 'avgHum8h'], ['avgTemp12h', 'avgHum12h']];
       
       for (let i = 0; i < windows.length; i++) {
         const win = windows[i];
