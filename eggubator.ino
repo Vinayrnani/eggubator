@@ -396,6 +396,17 @@ void autoControl() {
     
     // Atomizer Control
     if (atomizerMode == AUTO) {
+      unsigned long effectivePulseOn = PULSE_ON_TIME;
+      unsigned long effectivePulseOff = PULSE_OFF_TIME;
+      float humDelta = TARGET_HUMIDITY - currentHumidity;
+
+      if (humDelta >= 25.0) {
+        effectivePulseOn = PULSE_ON_TIME * 2;
+        effectivePulseOff = PULSE_OFF_TIME / 2;
+      } else if (humDelta >= 10.0) {
+        effectivePulseOn = PULSE_ON_TIME * 2;
+      }
+
       if (currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS) {
         if (!atomizerPulsing && !atomizerInOffPhase) {
           atomizerState = true;
@@ -410,13 +421,13 @@ void autoControl() {
         atomizerInOffPhase = false;
       }
 
-      if (atomizerPulsing && (millis() - atomizerPulseStart >= PULSE_ON_TIME)) {
+      if (atomizerPulsing && (millis() - atomizerPulseStart >= effectivePulseOn)) {
         atomizerState = false;
         digitalWrite(RELAY_ATOMIZER, LOW);
         atomizerPulsing = false;
         atomizerInOffPhase = true;
         atomizerOffStart = millis();
-      } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= PULSE_OFF_TIME)) {
+      } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= effectivePulseOff)) {
         atomizerInOffPhase = false;
       }
       
