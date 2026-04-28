@@ -116,26 +116,50 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card">
           <div class="stat-label" style="margin-bottom: 6px;">1 Hour</div>
-          <div style="display:flex; justify-content: space-evenly; align-items: center;">
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp1h">--</div></div>
-             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum1h">--</div></div>
+          <div style="display:flex; justify-content: space-evenly; align-items: flex-start;">
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp1h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngTemp1h">--</div>
+             </div>
+             <div style="width:1px; height:35px; background:#e0e4e9;"></div>
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum1h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngHum1h">--</div>
+             </div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-label" style="margin-bottom: 6px;">8 Hours</div>
-          <div style="display:flex; justify-content: space-evenly; align-items: center;">
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp8h">--</div></div>
-             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum8h">--</div></div>
+          <div style="display:flex; justify-content: space-evenly; align-items: flex-start;">
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp8h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngTemp8h">--</div>
+             </div>
+             <div style="width:1px; height:35px; background:#e0e4e9;"></div>
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum8h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngHum8h">--</div>
+             </div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-label" style="margin-bottom: 6px;">12 Hours</div>
-          <div style="display:flex; justify-content: space-evenly; align-items: center;">
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp12h">--</div></div>
-             <div style="width:1px; height:20px; background:#e0e4e9;"></div>
-             <div><div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div><div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum12h">--</div></div>
+          <div style="display:flex; justify-content: space-evenly; align-items: flex-start;">
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Temp</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgTemp12h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngTemp12h">--</div>
+             </div>
+             <div style="width:1px; height:35px; background:#e0e4e9;"></div>
+             <div style="text-align:center;">
+               <div class="stat-label" style="font-size:7px; margin-bottom: 0;">Hum</div>
+               <div class="stat-value" style="font-size:12px; margin-top: 0;" id="avgHum12h">--</div>
+               <div style="font-size:8px; color:#8a8d91; line-height:1;" id="rngHum12h">--</div>
+             </div>
           </div>
         </div>
       </div>
@@ -301,16 +325,37 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     async function calculateAverages() {
       const now = Date.now();
       const windows = [3600, 28800, 43200]; // 1h, 8h, 12h in seconds
-      const ids = [['avgTemp1h', 'avgHum1h'], ['avgTemp8h', 'avgHum8h'], ['avgTemp12h', 'avgHum12h']];
+      const ids = [
+        {tAvg:'avgTemp1h', hAvg:'avgHum1h', tRng:'rngTemp1h', hRng:'rngHum1h'},
+        {tAvg:'avgTemp8h', hAvg:'avgHum8h', tRng:'rngTemp8h', hRng:'rngHum8h'},
+        {tAvg:'avgTemp12h', hAvg:'avgHum12h', tRng:'rngTemp12h', hRng:'rngHum12h'}
+      ];
       
       for (let i = 0; i < windows.length; i++) {
         const win = windows[i];
         const logs = await db.logs.where('t').above(now - win * 1000).toArray();
         if (logs.length > 0) {
-          const avgTemp = logs.reduce((sum, l) => sum + l.temp, 0) / logs.length;
-          const avgHum = logs.reduce((sum, l) => sum + l.hum, 0) / logs.length;
-          document.getElementById(ids[i][0]).textContent = avgTemp.toFixed(1) + '°C';
-          document.getElementById(ids[i][1]).textContent = avgHum.toFixed(1) + '%';
+          let sumT = 0, sumH = 0;
+          let minT = 999, maxT = -999, minH = 999, maxH = -999;
+          
+          for(let j=0; j<logs.length; j++) {
+            const l = logs[j];
+            sumT += l.temp;
+            sumH += l.hum;
+            if(l.temp < minT) minT = l.temp;
+            if(l.temp > maxT) maxT = l.temp;
+            if(l.hum < minH) minH = l.hum;
+            if(l.hum > maxH) maxH = l.hum;
+          }
+          
+          const avgTemp = sumT / logs.length;
+          const avgHum = sumH / logs.length;
+          
+          document.getElementById(ids[i].tAvg).textContent = avgTemp.toFixed(1) + '°C';
+          document.getElementById(ids[i].hAvg).textContent = avgHum.toFixed(1) + '%';
+          
+          document.getElementById(ids[i].tRng).textContent = minT.toFixed(1) + ' - ' + maxT.toFixed(1);
+          document.getElementById(ids[i].hRng).textContent = minH.toFixed(1) + ' - ' + maxH.toFixed(1);
         }
       }
     }
