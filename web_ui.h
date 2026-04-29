@@ -63,9 +63,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .atomizer-idle { filter: grayscale(100%); opacity: 0.5; color: #8a8d91; }
     @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 15px #f39c12); } }
     @keyframes spray-puff { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(253, 250, 246, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.3s ease; }
+    .spinner { width: 50px; height: 50px; border: 5px solid #e7f3ff; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div style="font-weight: 800; color: var(--primary);">Synchronizing Records...</div>
+    <div id="loadingProgress" style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">Connecting to EGGubator</div>
+  </div>
   <div class="container">
     <div class="header">
       <h1>🥚 EGGubator 🐣</h1>
@@ -403,6 +411,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     async function fetchNextBatch(bootId, timeSec) {
       const r = await fetch('/data?boot=' + bootId + '&time=' + timeSec + '&count=200');
       const d = await r.json();
+      
+      const progressEl = document.getElementById('loadingProgress');
+      if (progressEl) progressEl.textContent = 'Processing logs...';
+      
       const newEntries = decodeLogs(d.logs, d.sentCount);
       if (newEntries.length > 0) {
         await db.logs.bulkPut(newEntries);
@@ -420,6 +432,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         await updateChart();
         await calculateAverages();
         await cleanupDB();
+        
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+              overlay.style.opacity = '0';
+              setTimeout(() => overlay.style.display = 'none', 300);
+            }
+          });
+        });
       }
     }
 
