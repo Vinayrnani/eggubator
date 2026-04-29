@@ -73,10 +73,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     <div class="card">
         <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <select id="stageSelect" class="badge badge-incubation" onchange="confirmStageChange()" style="border:none; outline:none; cursor:pointer; font-size:12px; font-weight:800; padding:6px 16px;">
-          <option value="incubation">Incubation Stage (1-18 days)</option>
-          <option value="lockdown">Lockdown Stage (19-21 days)</option>
-        </select>
+        <div style="display:flex; flex-direction:column;">
+          <div id="smartBadge" class="badge badge-incubation" style="font-size:12px; font-weight:800; padding:6px 16px;">Day -- : Loading Stage...</div>
+          <div style="font-size: 10px; color: var(--text-muted); font-weight: 600; margin-top: 4px; text-align: center;">STARTED: <span id="startDate">--</span></div>
+        </div>
         <div style="font-size: 14px; color: var(--text-muted); font-weight: 600;">UPTIME: <span id="uptime" style="color:var(--text)">--</span></div>
       </div>
       <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
@@ -315,9 +315,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       tIcon.style.transform = (d.servo == 1 ? 'rotate(-45deg)' : (d.servo == 2 ? 'rotate(45deg)' : 'rotate(0deg)'));
       tIcon.style.color = (d.servo !== 0 ? 'var(--on)' : 'var(--idle)');
 
-      const s = document.getElementById('stageSelect');
-      s.value = d.stageLockdown ? 'lockdown' : 'incubation';
-      s.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+      const badge = document.getElementById('smartBadge');
+      badge.textContent = 'Day ' + d.currentDay + (d.stageLockdown ? ' - Lockdown Stage' : ' - Incubation Stage');
+      badge.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
+      
+      const sd = document.getElementById('startDate');
+      if (d.startTimestamp > 0) {
+         sd.textContent = new Date(d.startTimestamp * 1000).toLocaleDateString();
+      } else {
+         sd.textContent = 'Unknown';
+      }
       
       calculateAverages();
     }
@@ -360,16 +367,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    function confirmStageChange() {
-      const s = document.getElementById('stageSelect');
-      const val = s.value;
-      if(confirm('Are you sure you want to change to ' + (val === 'lockdown' ? 'Lockdown' : 'Incubation') + ' Stage?')) {
-        fetch('/settings/api?stageType=' + val)
-          .then(() => update())
-          .catch(e => { console.error("Stage update failed:", e); load(); });
+    async function checkAutoReset() {
+      const lastLog = await db.logs.orderBy('t').last();
+      if (lastLog) {
+        const gap = Date.now() - lastLog.t;
+        if (gap > 259200000) { // 3 days in ms
+          console.log("Incubator was off for >3 days. Resetting to Day 0.");
+          const unixNow = Math.floor(Date.now() / 1000);
+          await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+        }
       } else {
-        // Revert dropdown to previous state if cancelled (via reload/fetch)
-        update(); 
+        // No logs at all, maybe first run?
+        const unixNow = Math.floor(Date.now() / 1000);
+        await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
       }
     }
 
@@ -464,20 +474,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       // Removed fetch to ESP to prevent EEPROM wear
     }
 
-    function setStage() {
-      const s = document.getElementById('stageSelect').value;
-      fetch('/settings/api?stageType=' + s)
-        .then(() => update())
-        .catch(e => console.error("Stage update failed:", e));
-    }
-
     initCharts();
     
     // Set initial refresh rate
     refreshRate = 5000;
     const sel = document.getElementById('refreshRate');
     if(sel) sel.value = refreshRate;
-    mainLoop();
+    
+    // Check if we need to auto-reset the batch based on Dexie logs
+    checkAutoReset().then(() => {
+      mainLoop();
+    });
   </script>
 </body>
 </html>
@@ -521,6 +528,20 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
       <div class="sys-item"><span>Uptime</span><span id="uptimeSys">--</span></div>
     </div>
+  </div>
+
+  <div class="card">
+    <h3>Incubation Cycle</h3>
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:12px; font-weight:700; color:#65676b; text-transform:uppercase;">Current Day</div>
+      <div style="font-size:48px; font-weight:800; color:#1877f2; line-height:1; margin:10px 0;" id="currentDayVal">--</div>
+      <div style="font-size:14px; font-weight:600; color:#8a8d91;">Started: <span id="startDateVal">--</span></div>
+    </div>
+    <div style="display:flex; gap:10px; margin-bottom:20px;">
+      <button onclick="adjustDay(-1)" style="background:#e7f3ff; color:#1877f2;">- 1 Day</button>
+      <button onclick="adjustDay(1)" style="background:#e7f3ff; color:#1877f2;">+ 1 Day</button>
+    </div>
+    <button class="danger" style="margin-top:0;" onclick="startNewBatch()">Start New Batch (Day 0)</button>
   </div>
 
     <div class="card">
@@ -613,6 +634,14 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('mTemp').value = d.temperature.toFixed(1);
         document.getElementById('mHum').value = d.humidity.toFixed(1);
         
+        document.getElementById('currentDayVal').textContent = d.currentDay;
+        const sd = document.getElementById('startDateVal');
+        if (d.startTimestamp > 0) {
+          sd.textContent = new Date(d.startTimestamp * 1000).toLocaleDateString();
+        } else {
+          sd.textContent = 'Unknown';
+        }
+        
         document.getElementById('mockFields').style.display = d.mock ? 'block' : 'none';
 
         const mockRes = await fetch('/settings/api');
@@ -656,6 +685,19 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       fetch(`/settings/api?temp=${t}&hum=${h}`).then(() => fetch('/status'));
     }
     
+    function adjustDay(dir) {
+      if(confirm('Are you sure you want to ' + (dir > 0 ? 'add' : 'subtract') + ' 1 day?')) {
+        fetch(`/settings/api?action=adjustDay&dir=${dir}`).then(() => fetch('/status'));
+      }
+    }
+    
+    function startNewBatch() {
+      if(confirm('WARNING: This will reset the incubator to Day 0. Are you sure?')) {
+        const unixNow = Math.floor(Date.now() / 1000);
+        fetch(`/settings/api?action=newBatch&timestamp=${unixNow}`).then(() => fetch('/status'));
+      }
+    }
+
     function reboot() { 
       if(confirm('Reboot device?')) {
         fetch('/reboot');

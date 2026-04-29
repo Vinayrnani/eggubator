@@ -56,6 +56,11 @@ unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
 
+uint32_t elapsedSeconds = 0;
+uint32_t startTimestamp = 0;
+unsigned long lastEEPROMSaveMillis = 0;
+unsigned long lastElapsedMillis = 0;
+
 // Control state variables
 unsigned long atomizerPulseStart = 0;
 bool atomizerPulsing = false;
@@ -74,14 +79,16 @@ Servo eggServo;
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
-#define SETTINGS_MAGIC_VAL 0xA5
+#define SETTINGS_MAGIC_VAL 0xA6
 
 struct DeviceSettings {
   uint8_t magic;
-  bool stageLockdown;
+  bool stageLockdown; // Kept for layout compatibility if needed, but not used actively from EEPROM
   unsigned long logInterval;
   unsigned long turnInterval;
   unsigned long pulseOnTime;
+  uint32_t elapsedSeconds;
+  uint32_t startTimestamp;
 };
 
 void saveSettings() {
@@ -94,6 +101,8 @@ void saveSettings() {
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
   if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
+  if (settings.elapsedSeconds != elapsedSeconds) { settings.elapsedSeconds = elapsedSeconds; changed = true; }
+  if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
   
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
@@ -110,6 +119,8 @@ void loadSettings() {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
+    elapsedSeconds = settings.elapsedSeconds;
+    startTimestamp = settings.startTimestamp;
     
     if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
       PULSE_ON_TIME = settings.pulseOnTime;
@@ -117,6 +128,9 @@ void loadSettings() {
       PULSE_ON_TIME = 3000;
     }
     
+    uint32_t currentDay = elapsedSeconds / 86400;
+    stageLockdown = (currentDay >= 18);
+
     if (stageLockdown) {
       TARGET_TEMP = 37.5;
       TARGET_HUMIDITY = 65.0;
@@ -129,6 +143,8 @@ void loadSettings() {
     Serial.println("Settings loaded from EEPROM");
   } else {
     Serial.println("No saved settings found, using defaults");
+    elapsedSeconds = 0;
+    startTimestamp = 0;
     saveSettings();
   }
 }
@@ -177,6 +193,9 @@ void handleStatus() {
                 ",\"uptimeSec\":" + String(uptimeSec) +
                 ",\"bootId\":" + String(currentBootId) +
                 ",\"currentSector\":" + String(currentSector) +
+                ",\"startTimestamp\":" + String(startTimestamp) +
+                ",\"elapsedSeconds\":" + String(elapsedSeconds) +
+                ",\"currentDay\":" + String(elapsedSeconds / 86400) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
   server.send(200, "application/json", json);
@@ -338,22 +357,29 @@ void handleSettingsApi() {
     PULSE_ON_TIME = val;
     saveSettings();
     server.send(200, "text/plain", "Atomizer pulse on time set to " + String(val/1000) + "s");
-  } else if (server.hasArg("stageType")) {
-    String type = server.arg("stageType");
-    if (type == "lockdown") {
-      stageLockdown = true;
-      TARGET_TEMP = 37.5;
-      TARGET_HUMIDITY = 65.0;
-      servoEnabled = false;
-    } else if (type == "incubation") {
-      stageLockdown = false;
-      TARGET_TEMP = 37.5;
-      TARGET_HUMIDITY = 55.0;
-      servoEnabled = true;
+  } else if (server.hasArg("action")) {
+    String action = server.arg("action");
+    if (action == "newBatch" && server.hasArg("timestamp")) {
+      startTimestamp = (uint32_t)server.arg("timestamp").toInt();
+      elapsedSeconds = 0;
+      saveSettings();
+      server.send(200, "text/plain", "New batch started");
+    } else if (action == "adjustDay" && server.hasArg("dir")) {
+      int dir = server.arg("dir").toInt();
+      if (dir == 1) {
+        elapsedSeconds += 86400;
+        if (startTimestamp >= 86400) startTimestamp -= 86400;
+      } else if (dir == -1 && elapsedSeconds >= 86400) {
+        elapsedSeconds -= 86400;
+        startTimestamp += 86400;
+      }
+      saveSettings();
+      server.send(200, "text/plain", "Day adjusted");
+    } else {
+      server.send(400, "text/plain", "Invalid action");
     }
-    saveSettings();
-    server.send(200, "text/plain", "Stage set to " + type);
   } else {
+    uint32_t currentDay = elapsedSeconds / 86400;
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
                   ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                   ",\"temp\":" + String(mockTemp) + 
@@ -361,6 +387,9 @@ void handleSettingsApi() {
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
                   ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
+                  ",\"startTimestamp\":" + String(startTimestamp) +
+                  ",\"elapsedSeconds\":" + String(elapsedSeconds) +
+                  ",\"currentDay\":" + String(currentDay) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
     server.send(200, "application/json", json);
   }
@@ -636,7 +665,35 @@ void loop() {
   server.handleClient();
   MDNS.update();
 
-  if (millis() - lastReadTime > 2000) {
+  unsigned long currentMillis = millis();
+  
+  if (currentMillis - lastElapsedMillis >= 1000) {
+    elapsedSeconds++;
+    lastElapsedMillis = currentMillis;
+    
+    uint32_t currentDay = elapsedSeconds / 86400;
+    bool newStageLockdown = (currentDay >= 18);
+    if (newStageLockdown != stageLockdown) {
+      stageLockdown = newStageLockdown;
+      if (stageLockdown) {
+        TARGET_TEMP = 37.5;
+        TARGET_HUMIDITY = 65.0;
+        servoEnabled = false;
+      } else {
+        TARGET_TEMP = 37.5;
+        TARGET_HUMIDITY = 55.0;
+        servoEnabled = true;
+      }
+      saveSettings();
+    }
+  }
+
+  if (currentMillis - lastEEPROMSaveMillis >= 10800000) { // 3 hours
+    saveSettings();
+    lastEEPROMSaveMillis = currentMillis;
+  }
+
+  if (currentMillis - lastReadTime > 2000) {
     if (autoSimMode) {
       updateAutoSim(heaterState, atomizerState, fanState);
     }
