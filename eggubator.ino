@@ -364,6 +364,19 @@ void handleSettingsApi() {
       elapsedSeconds = 0;
       saveSettings();
       server.send(200, "text/plain", "New batch started");
+    } else if (action == "syncTime" && server.hasArg("timestamp")) {
+      uint32_t currentUnix = (uint32_t)server.arg("timestamp").toInt();
+      if (startTimestamp > 0 && currentUnix > startTimestamp) {
+        uint32_t correctElapsed = currentUnix - startTimestamp;
+        // Only update if difference is > 10 minutes to avoid unnecessary EEPROM writes
+        if (abs((long)correctElapsed - (long)elapsedSeconds) > 600) {
+          elapsedSeconds = correctElapsed;
+          saveSettings();
+          server.send(200, "text/plain", "Time synced");
+          return;
+        }
+      }
+      server.send(200, "text/plain", "No sync needed");
     } else if (action == "adjustDay" && server.hasArg("dir")) {
       int dir = server.arg("dir").toInt();
       if (dir == 1) {

@@ -324,7 +324,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       tIcon.style.color = (d.servo !== 0 ? 'var(--on)' : 'var(--idle)');
 
       const badge = document.getElementById('smartBadge');
-      badge.textContent = 'Day ' + d.currentDay + (d.stageLockdown ? ' - Lockdown Stage' : ' - Incubation Stage');
+      badge.textContent = 'Day ' + (d.currentDay + 1) + (d.stageLockdown ? ' - Lockdown Stage' : ' - Incubation Stage');
       badge.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
       
       const sd = document.getElementById('startDate');
@@ -377,16 +377,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     async function checkAutoReset() {
       const lastLog = await db.logs.orderBy('t').last();
+      const unixNow = Math.floor(Date.now() / 1000);
+      
       if (lastLog) {
         const gap = Date.now() - lastLog.t;
         if (gap > 259200000) { // 3 days in ms
-          console.log("Incubator was off for >3 days. Resetting to Day 0.");
-          const unixNow = Math.floor(Date.now() / 1000);
+          console.log("Incubator was off for >3 days. Resetting to Day 1.");
           await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+        } else {
+          // Less than 3 days gap. Let's make sure the ESP's time is synced
+          await fetch('/settings/api?action=syncTime&timestamp=' + unixNow);
         }
       } else {
         // No logs at all, maybe first run?
-        const unixNow = Math.floor(Date.now() / 1000);
         await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
       }
     }
@@ -656,7 +659,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('mTemp').value = d.temperature.toFixed(1);
         document.getElementById('mHum').value = d.humidity.toFixed(1);
         
-        document.getElementById('currentDayVal').textContent = d.currentDay;
+        document.getElementById('currentDayVal').textContent = (d.currentDay + 1);
         const sd = document.getElementById('startDateVal');
         if (d.startTimestamp > 0) {
           sd.textContent = new Date(d.startTimestamp * 1000).toLocaleDateString();
