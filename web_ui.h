@@ -263,9 +263,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
               type: 'linear', 
               min: -300, 
               max: 0,
-              title: { display: true, text: 'Time', font: { weight: 'bold' } }, 
+              title: { display: false }, 
               grid: { color: '#f0f0f0' },
               ticks: {
+                maxRotation: 0,
+                autoSkipPadding: 15,
                 callback: function(value) {
                    const now = Date.now();
                    const date = new Date(now + value * 1000);
@@ -273,8 +275,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 }
               }
             },
-            yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Temp °C', font: { weight: 'bold' } } },
-            yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: true, text: 'Hum %', font: { weight: 'bold' } }, grid: { display: false } },
+            yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, ticks: { padding: 2 } },
+            yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, grid: { display: false }, ticks: { padding: 2 } },
             yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false }
           },
           plugins: {
@@ -291,9 +293,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 label: function(context) {
                   const idx = context.datasetIndex;
                   const val = context.raw.y;
-                  if (idx === 2) return 'Heater: ' + (val > 0 ? 'ON' : 'OFF');
-                  if (idx === 3) return 'Atomizer: ' + (val > 2 ? 'ON' : 'OFF');
-                  if (idx === 4) return 'Fan: ' + (val > 4 ? 'ON' : 'OFF');
+                  const isStepped = context.chart.data.datasets[idx].stepped;
+                  if (idx === 2) return 'Heater: ' + (isStepped ? (val > 0 ? 'ON' : 'OFF') : Math.round(val * 100) + '%');
+                  if (idx === 3) return 'Atomizer: ' + (isStepped ? (val > 2 ? 'ON' : 'OFF') : Math.round((val - 2) * 100) + '%');
+                  if (idx === 4) return 'Fan: ' + (isStepped ? (val > 4 ? 'ON' : 'OFF') : Math.round((val - 4) * 100) + '%');
                   if (idx === 5) return 'Turner: ' + (val === 7 ? 'Idle' : (val === 6 ? '← Left' : 'Right →'));
                   return null;
                 },
@@ -302,7 +305,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 }
               }
             },
-            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+            zoom: { 
+              pan: { enabled: true, mode: 'x', onPanComplete: function() { updateChart(); } }, 
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: function() { updateChart(); } }
+            }
           }
         }
       });
@@ -396,15 +402,75 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     async function updateChart() {
       const now = Date.now();
-      const viewStart = now - (4 * 3600 * 1000); // 4 hours ago
+      const viewStart = now - (24 * 3600 * 1000); // Up to 24 hours ago
       
-      const logs = await db.logs.where('t').above(viewStart).toArray();
-      if (logs.length > 0) {
+      const rawLogs = await db.logs.where('t').above(viewStart).toArray();
+      if (rawLogs.length > 0) {
+        let visibleSeconds = 4 * 3600;
+        if (mainChart.scales && mainChart.scales.x && mainChart.scales.x.max !== undefined) {
+           visibleSeconds = mainChart.scales.x.max - mainChart.scales.x.min;
+        }
+
+        let bucketSize = 0;
+        if (visibleSeconds > 12 * 3600) bucketSize = 5 * 60 * 1000; // 5 mins
+        else if (visibleSeconds > 4 * 3600) bucketSize = 2 * 60 * 1000; // 2 mins
+        else if (visibleSeconds > 1 * 3600) bucketSize = 30 * 1000; // 30 secs
+        
+        let logs = rawLogs;
+        if (bucketSize > 0) {
+          const buckets = [];
+          let currentBucket = null;
+          rawLogs.forEach(l => {
+            const bTime = Math.floor(l.t / bucketSize) * bucketSize;
+            if (!currentBucket || currentBucket.t !== bTime) {
+              if (currentBucket) buckets.push(currentBucket);
+              currentBucket = { t: bTime, tempSum: 0, humSum: 0, hSum: 0, aSum: 0, fSum: 0, sCounts: {0:0, 1:0, 2:0, 3:0}, count: 0 };
+            }
+            currentBucket.tempSum += l.temp;
+            currentBucket.humSum += l.hum;
+            currentBucket.hSum += (l.h ? 1 : 0);
+            currentBucket.aSum += (l.a ? 1 : 0);
+            currentBucket.fSum += (l.f ? 1 : 0);
+            currentBucket.sCounts[l.s]++;
+            currentBucket.count++;
+          });
+          if (currentBucket) buckets.push(currentBucket);
+          
+          logs = buckets.map(b => {
+            let dominantS = 0;
+            let maxCount = 0;
+            for (let s in b.sCounts) {
+              if (b.sCounts[s] > maxCount) { maxCount = b.sCounts[s]; dominantS = parseInt(s); }
+            }
+            return {
+              t: b.t + bucketSize/2,
+              temp: b.tempSum / b.count,
+              hum: b.humSum / b.count,
+              h_dc: b.hSum / b.count,
+              a_dc: b.aSum / b.count,
+              f_dc: b.fSum / b.count,
+              s: dominantS
+            };
+          });
+        } else {
+          logs = rawLogs.map(l => ({
+            ...l,
+            h_dc: l.h ? 1.0 : 0.0,
+            a_dc: l.a ? 1.0 : 0.0,
+            f_dc: l.f ? 1.0 : 0.0
+          }));
+        }
+
+        const isStepped = (bucketSize === 0);
+        mainChart.data.datasets[2].stepped = isStepped;
+        mainChart.data.datasets[3].stepped = isStepped;
+        mainChart.data.datasets[4].stepped = isStepped;
+
         mainChart.data.datasets[0].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.temp }));
         mainChart.data.datasets[1].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.hum }));
-        mainChart.data.datasets[2].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.h ? 1.0 : 0.0 }));
-        mainChart.data.datasets[3].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.a ? 3.0 : 2.0 }));
-        mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.f ? 5.0 : 4.0 }));
+        mainChart.data.datasets[2].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.h_dc }));
+        mainChart.data.datasets[3].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: 2.0 + l.a_dc }));
+        mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: 4.0 + l.f_dc }));
         mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == 1 ? 6.0 : (l.s == 2 ? 8.0 : 7.0)) }));
         
         mainChart.update('none');
