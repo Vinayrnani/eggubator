@@ -207,8 +207,39 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
 
     async function cleanupDB() {
+      // 1. Hard purge everything older than 30 days
       const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-      await db.logs.where('t').below(thirtyDaysAgo).delete();
+      const purged = await db.logs.where('t').below(thirtyDaysAgo).delete();
+      if (purged > 0) console.log(`Purged ${purged} logs older than 30 days.`);
+
+      // 2. Downsample logs between 48 hours and 30 days old to 15-minute intervals
+      const twoDaysAgo = Date.now() - (48 * 60 * 60 * 1000);
+      const oldLogs = await db.logs.where('t').below(twoDaysAgo).toArray();
+      
+      if (oldLogs.length === 0) return;
+      
+      const seenBuckets = new Set();
+      const deleteKeys = [];
+      const BUCKET_SIZE = 15 * 60 * 1000; // 15 minutes
+      
+      oldLogs.forEach(log => {
+        const bucketId = Math.floor(log.t / BUCKET_SIZE);
+        if (!seenBuckets.has(bucketId)) {
+          seenBuckets.add(bucketId);
+        } else {
+          deleteKeys.push(log.t);
+        }
+      });
+      
+      if (deleteKeys.length > 0) {
+        // chunk deletion to avoid blocking main thread or hitting limits
+        const chunkSize = 1000;
+        for (let i = 0; i < deleteKeys.length; i += chunkSize) {
+          const chunk = deleteKeys.slice(i, i + chunkSize);
+          await db.logs.bulkDelete(chunk);
+        }
+        console.log(`Cleaned up ${deleteKeys.length} redundant logs older than 48h.`);
+      }
     }
 
     function decodeLogs(hex, logCount) {
