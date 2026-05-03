@@ -174,6 +174,53 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
+      <h3 style="margin-bottom:10px;">Environment Stability Analysis</h3>
+      <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">LAST 24 HOURS</div>
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
+        <div class="stat-card" style="text-align:left; padding:8px;">
+          <div class="stat-label">Temperature (±0.3°C)</div>
+          <div style="font-size:11px; line-height:1.4;">
+            <div><span style="color:#f02849;font-weight:bold;">Under:</span> <span id="tUnder24">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="tUnderMax24">Longest: --</div>
+            <div style="margin-top:4px;"><span style="color:#f02849;font-weight:bold;">Over:</span> <span id="tOver24">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="tOverMax24">Longest: --</div>
+          </div>
+        </div>
+        <div class="stat-card" style="text-align:left; padding:8px;">
+          <div class="stat-label">Humidity (±5.0%)</div>
+          <div style="font-size:11px; line-height:1.4;">
+            <div><span style="color:#1877f2;font-weight:bold;">Under:</span> <span id="hUnder24">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="hUnderMax24">Longest: --</div>
+            <div style="margin-top:4px;"><span style="color:#1877f2;font-weight:bold;">Over:</span> <span id="hOver24">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="hOverMax24">Longest: --</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">ENTIRE INCUBATION</div>
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="stat-card" style="text-align:left; padding:8px;">
+          <div class="stat-label">Temperature (±0.3°C)</div>
+          <div style="font-size:11px; line-height:1.4;">
+            <div><span style="color:#f02849;font-weight:bold;">Under:</span> <span id="tUnderAll">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="tUnderMaxAll">Longest: --</div>
+            <div style="margin-top:4px;"><span style="color:#f02849;font-weight:bold;">Over:</span> <span id="tOverAll">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="tOverMaxAll">Longest: --</div>
+          </div>
+        </div>
+        <div class="stat-card" style="text-align:left; padding:8px;">
+          <div class="stat-label">Humidity (±5.0%)</div>
+          <div style="font-size:11px; line-height:1.4;">
+            <div><span style="color:#1877f2;font-weight:bold;">Under:</span> <span id="hUnderAll">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="hUnderMaxAll">Longest: --</div>
+            <div style="margin-top:4px;"><span style="color:#1877f2;font-weight:bold;">Over:</span> <span id="hOverAll">--</span></div>
+            <div style="color:#8a8d91;font-size:9px;" id="hOverMaxAll">Longest: --</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
         <h3 style="margin: 0;">History & Device Activity</h3>
         <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: var(--bg); border: 1px solid #e0e4e9; color: var(--text); font-size: 11px; font-weight:700;">
@@ -372,6 +419,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
       
       calculateAverages();
+      calculateStability();
     }
 
     async function calculateAverages() {
@@ -410,6 +458,133 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           document.getElementById(ids[i].hRng).textContent = minH.toFixed(1) + ' - ' + maxH.toFixed(1);
         }
       }
+    }
+
+    function formatDuration(ms) {
+      if (ms === 0) return 'None';
+      const totalMins = Math.floor(ms / 60000);
+      if (totalMins === 0) return '< 1m';
+      const h = Math.floor(totalMins / 60);
+      const m = totalMins % 60;
+      return (h > 0 ? h + 'h ' : '') + m + 'm';
+    }
+
+    function formatDateRange(start, end) {
+      if (!start) return '--';
+      const s = new Date(start);
+      const e = new Date(end);
+      const sTime = s.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+      const eTime = e.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+      return s.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' + sTime + '-' + eTime;
+    }
+
+    async function calculateStability() {
+      const now = Date.now();
+      const targetT = parseFloat(document.getElementById('targetTemp').textContent) || 37.5;
+      const targetH = parseFloat(document.getElementById('targetHum').textContent) || 55.0;
+      const tempUnderThreshold = targetT - 0.3;
+      const tempOverThreshold = targetT + 0.3;
+      const humUnderThreshold = targetH - 5.0;
+      const humOverThreshold = targetH + 5.0;
+
+      const logsAll = await db.logs.orderBy('t').toArray();
+      if (logsAll.length === 0) return;
+
+      const logs24h = logsAll.filter(l => l.t >= now - 24 * 3600 * 1000);
+
+      function analyze(logs, prefix) {
+        let tUnderTime = 0, tOverTime = 0;
+        let hUnderTime = 0, hOverTime = 0;
+
+        let tUnderStart = null, tUnderMax = 0, tUnderMaxRange = null;
+        let tOverStart = null, tOverMax = 0, tOverMaxRange = null;
+        let hUnderStart = null, hUnderMax = 0, hUnderMaxRange = null;
+        let hOverStart = null, hOverMax = 0, hOverMaxRange = null;
+
+        for (let i = 0; i < logs.length; i++) {
+          const l = logs[i];
+          const prevT = i > 0 ? logs[i-1].t : l.t;
+          const dt = l.t - prevT;
+          
+          const isOutage = dt > 600000; // > 10 minutes gap
+          const effectiveDt = isOutage ? 0 : dt;
+          
+          if (isOutage) {
+            if (tUnderStart) { const dur = prevT - tUnderStart; if (dur > tUnderMax) { tUnderMax = dur; tUnderMaxRange = {s: tUnderStart, e: prevT}; } tUnderStart = null; }
+            if (tOverStart) { const dur = prevT - tOverStart; if (dur > tOverMax) { tOverMax = dur; tOverMaxRange = {s: tOverStart, e: prevT}; } tOverStart = null; }
+            if (hUnderStart) { const dur = prevT - hUnderStart; if (dur > hUnderMax) { hUnderMax = dur; hUnderMaxRange = {s: hUnderStart, e: prevT}; } hUnderStart = null; }
+            if (hOverStart) { const dur = prevT - hOverStart; if (dur > hOverMax) { hOverMax = dur; hOverMaxRange = {s: hOverStart, e: prevT}; } hOverStart = null; }
+          }
+
+          // Temp Under
+          if (l.temp < tempUnderThreshold) {
+            tUnderTime += effectiveDt;
+            if (!tUnderStart) tUnderStart = l.t;
+          } else {
+            if (tUnderStart) {
+              const dur = prevT - tUnderStart;
+              if (dur > tUnderMax) { tUnderMax = dur; tUnderMaxRange = {s: tUnderStart, e: prevT}; }
+              tUnderStart = null;
+            }
+          }
+
+          // Temp Over
+          if (l.temp > tempOverThreshold) {
+            tOverTime += effectiveDt;
+            if (!tOverStart) tOverStart = l.t;
+          } else {
+            if (tOverStart) {
+              const dur = prevT - tOverStart;
+              if (dur > tOverMax) { tOverMax = dur; tOverMaxRange = {s: tOverStart, e: prevT}; }
+              tOverStart = null;
+            }
+          }
+
+          // Hum Under
+          if (l.hum < humUnderThreshold) {
+            hUnderTime += effectiveDt;
+            if (!hUnderStart) hUnderStart = l.t;
+          } else {
+            if (hUnderStart) {
+              const dur = prevT - hUnderStart;
+              if (dur > hUnderMax) { hUnderMax = dur; hUnderMaxRange = {s: hUnderStart, e: prevT}; }
+              hUnderStart = null;
+            }
+          }
+
+          // Hum Over
+          if (l.hum > humOverThreshold) {
+            hOverTime += effectiveDt;
+            if (!hOverStart) hOverStart = l.t;
+          } else {
+            if (hOverStart) {
+              const dur = prevT - hOverStart;
+              if (dur > hOverMax) { hOverMax = dur; hOverMaxRange = {s: hOverStart, e: prevT}; }
+              hOverStart = null;
+            }
+          }
+        }
+
+        // Close trailing ranges
+        const lastT = logs[logs.length-1].t;
+        if (tUnderStart) { const dur = lastT - tUnderStart; if (dur > tUnderMax) { tUnderMax = dur; tUnderMaxRange = {s: tUnderStart, e: lastT}; } }
+        if (tOverStart) { const dur = lastT - tOverStart; if (dur > tOverMax) { tOverMax = dur; tOverMaxRange = {s: tOverStart, e: lastT}; } }
+        if (hUnderStart) { const dur = lastT - hUnderStart; if (dur > hUnderMax) { hUnderMax = dur; hUnderMaxRange = {s: hUnderStart, e: lastT}; } }
+        if (hOverStart) { const dur = lastT - hOverStart; if (dur > hOverMax) { hOverMax = dur; hOverMaxRange = {s: hOverStart, e: lastT}; } }
+
+        document.getElementById('tUnder' + prefix).textContent = formatDuration(tUnderTime);
+        document.getElementById('tOver' + prefix).textContent = formatDuration(tOverTime);
+        document.getElementById('hUnder' + prefix).textContent = formatDuration(hUnderTime);
+        document.getElementById('hOver' + prefix).textContent = formatDuration(hOverTime);
+
+        document.getElementById('tUnderMax' + prefix).textContent = tUnderMax > 0 ? `Longest: ${formatDuration(tUnderMax)} (${formatDateRange(tUnderMaxRange.s, tUnderMaxRange.e)})` : 'Longest: None';
+        document.getElementById('tOverMax' + prefix).textContent = tOverMax > 0 ? `Longest: ${formatDuration(tOverMax)} (${formatDateRange(tOverMaxRange.s, tOverMaxRange.e)})` : 'Longest: None';
+        document.getElementById('hUnderMax' + prefix).textContent = hUnderMax > 0 ? `Longest: ${formatDuration(hUnderMax)} (${formatDateRange(hUnderMaxRange.s, hUnderMaxRange.e)})` : 'Longest: None';
+        document.getElementById('hOverMax' + prefix).textContent = hOverMax > 0 ? `Longest: ${formatDuration(hOverMax)} (${formatDateRange(hOverMaxRange.s, hOverMaxRange.e)})` : 'Longest: None';
+      }
+
+      analyze(logs24h, '24');
+      analyze(logsAll, 'All');
     }
 
     async function checkAutoReset() {
@@ -531,6 +706,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
         await updateChart();
         await calculateAverages();
+        await calculateStability();
         await cleanupDB();
         
         requestAnimationFrame(() => {
@@ -574,6 +750,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
               latestTimeSec = newEntries[newEntries.length-1].timeSec;
               await updateChart();
               await calculateAverages();
+              await calculateStability();
               await cleanupDB();
             }
           }
