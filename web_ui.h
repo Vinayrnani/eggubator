@@ -220,7 +220,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       
       const seenBuckets = new Set();
       const deleteKeys = [];
-      const BUCKET_SIZE = 15 * 60 * 1000; // 15 minutes
+      const BUCKET_SIZE = 2 * 60 * 1000; // 2 minutes
       
       oldLogs.forEach(log => {
         const bucketId = Math.floor(log.t / BUCKET_SIZE);
