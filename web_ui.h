@@ -174,6 +174,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <h3 style="margin: 0;">History & Device Activity</h3>
+        <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: var(--bg); border: 1px solid #e0e4e9; color: var(--text); font-size: 11px; font-weight:700;">
+          <option value="1000">1s</option>
+          <option value="2000">2s</option>
+          <option value="5000">5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+        </select>
+      </div>
+      <div class="chart-box"><canvas id="mainChart"></canvas></div>
+    </div>
+
+    <div class="card">
       <h3 style="margin-bottom:10px;">Environment Stability Analysis</h3>
       <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">LAST 24 HOURS</div>
       <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
@@ -218,20 +232,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-        <h3 style="margin: 0;">History & Device Activity</h3>
-        <select id="refreshRate" onchange="updateRefreshInterval()" style="padding: 4px 8px; border-radius: 8px; background: var(--bg); border: 1px solid #e0e4e9; color: var(--text); font-size: 11px; font-weight:700;">
-          <option value="1000">1s</option>
-          <option value="2000">2s</option>
-          <option value="5000">5s</option>
-          <option value="10000">10s</option>
-          <option value="30000">30s</option>
-        </select>
-      </div>
-      <div class="chart-box"><canvas id="mainChart"></canvas></div>
     </div>
 
     <div class="footer">
