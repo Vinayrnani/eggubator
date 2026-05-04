@@ -39,7 +39,7 @@ cp eggubator.ino config.h *.h firmware.bin /storage/emulated/0/ArduinoDroid/sket
 | `uuu` | Update chat.log file with prompt and response after every prompt |
 | `PPP` | Commit and push to git repository |
 | `ddd` | Deploy the compiled binary via OTA update to ESP device (192.168.100.100) |
-| `DDD` | 1. Compile firmware 2. Copy to ArduinoDroid 3. Deploy OTA |
+| `DDD` | 1. Compile firmware 2. Deploy OTA |
 
 ## Example Workflow
 
@@ -52,10 +52,7 @@ arduino-cli compile -b esp8266:esp8266:nodemcu --output-dir build_output eggubat
 # 3. Copy output binary to firmware.bin
 cp build_output/eggubator.ino.bin firmware.bin
 
-# 4. Copy files to ArduinoDroid (Android)
-cp eggubator.ino *.h firmware.bin /storage/emulated/0/ArduinoDroid/sketchbook/
-
-# 5. Deploy via OTA (DDD)
+# 4. Deploy via OTA (DDD)
 curl -s -F "update=@firmware.bin" http://192.168.100.100/update
 ```
 
