@@ -627,7 +627,7 @@ void setup() {
   digitalWrite(RELAY_FAN, LOW);
 
   initDHT();
-  eggServo.attach(SERVO_PIN);
+  eggServo.attach(SERVO_PIN, 500, 2500);
 
   initRecovery();
   
