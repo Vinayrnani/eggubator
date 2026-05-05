@@ -583,7 +583,11 @@ void rotateEggs() {
     
     int endAngle = restingAt45 ? (135 + angleAdjustment) : (45 - angleAdjustment);
     endAngle = constrain(endAngle, 0, 180);
-    myServo.startEaseTo(endAngle, EGG_TURN_DURATION);
+    int currentAngle = myServo.getCurrentAngle();
+    float distance = abs(endAngle - currentAngle);
+    float durationSeconds = (float)EGG_TURN_DURATION / 1000.0;
+    float speed = (distance > 0) ? (distance / durationSeconds) : 5.0; // Avoid division by zero
+    myServo.startEaseTo(endAngle, speed);
   }
   
   if (turning) {
