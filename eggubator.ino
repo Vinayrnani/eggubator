@@ -587,7 +587,8 @@ void rotateEggs() {
     float distance = abs(endAngle - currentAngle);
     float durationSeconds = (float)EGG_TURN_DURATION / 1000.0;
     float speed = (distance > 0) ? (distance / durationSeconds) : 5.0; // Avoid division by zero
-    myServo.startEaseTo(endAngle, speed);
+    myServo.setSpeed(speed);
+    myServo.startEaseTo(endAngle);
   }
   
   if (turning) {
@@ -607,7 +608,8 @@ void rotateEggs() {
     intendedRestAngle = constrain(intendedRestAngle, 0, 180);
     
     if (currentTarget != intendedRestAngle && !myServo.isMoving()) {
-       myServo.startEaseTo(intendedRestAngle, 2000); // 2-second smooth transition to new adjusted rest angle
+       myServo.setSpeed(abs(intendedRestAngle - myServo.getCurrentAngle()) / 2.0);
+       myServo.startEaseTo(intendedRestAngle); // 2-second smooth transition to new adjusted rest angle
     }
     
     servoPosition = restingAt45 ? 1 : 2;
@@ -615,7 +617,10 @@ void rotateEggs() {
   
   if (!servoEnabled || servoMode == KILL_OFF) {
     servoPosition = 0;
-    if (!myServo.isMoving()) myServo.startEaseTo(SERVO_CENTER, 2000); // Smooth to center when killed
+    if (!myServo.isMoving()) {
+        myServo.setSpeed(90.0 / 2.0); // Smooth to center in 2 seconds
+        myServo.startEaseTo(SERVO_CENTER);
+    }
   }
 }
 
