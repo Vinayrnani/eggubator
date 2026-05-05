@@ -8,7 +8,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266HTTPClient.h>
-#include <ServoEasing.hpp>
+#include <ServoSmooth.h>
 #include <EEPROM.h>
 #include <ESP8266mDNS.h>
 
@@ -31,7 +31,7 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 #define AUTO 1
 
 // Configurable timing (can be changed via web)
-unsigned long LOG_INTERVAL = 10000;
+unsigned long LOG_INTERVAL = 90000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 unsigned long EGG_TURN_DURATION = 10000;
 unsigned long PULSE_ON_TIME = 3000;
@@ -59,7 +59,7 @@ unsigned long lastServoTurn = 0;
 bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
 int8_t angleAdjustment = 0;
 
-ServoEasing myServo;
+ServoSmooth myServo;
 
 uint32_t elapsedSeconds = 0;
 uint32_t startTimestamp = 0;
@@ -107,7 +107,7 @@ void saveSettings() {
   if (settings.magic != SETTINGS_MAGIC_VAL) { settings.magic = SETTINGS_MAGIC_VAL; changed = true; }
   if (settings.stageLockdown != stageLockdown) { settings.stageLockdown = stageLockdown; changed = true; }
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
-  if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
+  if (EGG_TURN_INTERVAL != 20000 && settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
   if (settings.turnDurationSeconds != (EGG_TURN_DURATION / 1000)) { settings.turnDurationSeconds = (EGG_TURN_DURATION / 1000); changed = true; }
   if (settings.angleAdjustment != angleAdjustment) { settings.angleAdjustment = angleAdjustment; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
@@ -307,7 +307,7 @@ void handleControl() {
       servoEnabled = !isKillOff;
       if (isKillOff) {
         servoPosition = 0;
-        myServo.startEaseTo(SERVO_CENTER, 2000);
+        myServo.setTargetDeg(SERVO_CENTER);
       }
     }
     server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
@@ -363,7 +363,9 @@ void handleSettingsApi() {
   } else if (server.hasArg("eggTurnInterval")) {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
-    saveSettings();
+    if (val != 20000) {  // Don't save 20sec to EEPROM (only for mock/auto mode testing)
+      saveSettings();
+    }
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
   } else if (server.hasArg("eggTurnDuration")) {
     uint8_t val = server.arg("eggTurnDuration").toInt();
@@ -378,6 +380,10 @@ void handleSettingsApi() {
     int8_t val = server.arg("angleAdjustment").toInt();
     if (val >= -15 && val <= 15) {
       angleAdjustment = val;
+      // Immediately apply new angle adjustment to current position
+      int currentTarget = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+      currentTarget = constrain(currentTarget, 0, 180);
+      myServo.setTargetDeg(currentTarget);
       saveSettings();
       server.send(200, "text/plain", "Angle adjustment set to " + String(val));
     } else {
@@ -394,7 +400,9 @@ void handleSettingsApi() {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
       elapsedSeconds = 0;
       restingAt45 = true;
-      myServo.startEaseTo(SERVO_CENTER, 2000); // Reset servo to center (90°) for new batch
+      EEPROM.write(EEPROM_SERVO_REST, 1);  // Save as left (true = 1)
+      EEPROM.commit();
+      myServo.setTargetDeg(90); // Reset servo to center (90°) for new batch
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
@@ -544,57 +552,68 @@ void autoControl() {
 }
 
 // ============================================
-// SERVO PWM (Using ServoEasing)
+// SERVO PWM (Using ServoSmooth)
 // ============================================
 
 void servoInit() {
   int initialAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
   initialAngle = constrain(initialAngle, 0, 180);
-  myServo.attach(SERVO_PIN, initialAngle);
-  myServo.setEasingType(EASE_LINEAR);
+  
+  myServo.attach(SERVO_PIN, 500, 2400, initialAngle);
+  myServo.smoothStart();  // Softens initial movement from unknown position (blocking ~1s)
+  myServo.setSpeed(30);
+  myServo.setAccel(0.3);  // Reduced acceleration for smoother start/stop
+  myServo.setAutoDetach(false);
 }
 
 // ============================================
 // EGG TURNER
 // ============================================
 void rotateEggs() {
-  // Update the ServoEasing engine
-  myServo.update();
-
-  // If turner is disabled or in lockdown, do not move the servo
-  if (stageLockdown || !servoEnabled || servoMode == KILL_OFF) {
+  bool targetReached = myServo.tick();  // tick() returns true when target reached
+  
+  // Disable egg turner during lockdown stage
+  if (stageLockdown) {
+    servoEnabled = false;
     servoPosition = 0;
     return;
   }
   
-  // Trigger turn if interval elapsed
-  if (servoMode == AUTO && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
-    Serial.println("Egg turn started");
-    
-    // Toggle state
-    restingAt45 = !restingAt45;
-    
-    // Save state at start of turn
-    EEPROM.write(EEPROM_SERVO_REST, restingAt45 ? 1 : 0);
-    EEPROM.commit();
-    
-    // Calculate new position
+  // Check if servo reached target and interval has passed
+  if (targetReached && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
+    // Calculate target angle (flip to opposite side based on current restingAt45)
     int targetAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
     targetAngle = constrain(targetAngle, 0, 180);
     
-    // Smooth move
-    int currentAngle = myServo.getCurrentAngle();
-    float distance = abs(targetAngle - currentAngle);
-    float durationSeconds = (float)EGG_TURN_DURATION / 1000.0;
-    float speed = (distance > 0) ? (distance / durationSeconds) : 5.0;
-    
+    // Calculate speed based on duration (90° distance between rest positions)
+    float speed = 90.0 / (EGG_TURN_DURATION / 1000.0);  // degrees per second
     myServo.setSpeed(speed);
-    myServo.startEaseTo(targetAngle);
     
-    // Update tracking
-    servoPosition = restingAt45 ? 1 : 2;
+    // Start movement to new position
+    myServo.setTargetDeg(targetAngle);
+    
+    // Save NEXT resting position to EEPROM (before flip)
+    EEPROM.write(EEPROM_SERVO_REST, restingAt45 ? 0 : 1);
+    EEPROM.commit();
+    
+    // Flip restingAt45 for next turn
+    restingAt45 = !restingAt45;
+    
     lastServoTurn = millis();
-    Serial.println("Egg turn completed (started move)");
+    Serial.println("Egg turn started to: " + String(targetAngle));
+  }
+  
+  // Update servoPosition for display
+  if (targetReached) {
+    // At rest - show actual position
+    servoPosition = restingAt45 ? 1 : 2;
+  } else {
+    // Moving - show target position
+    servoPosition = restingAt45 ? 2 : 1;
+  }
+  
+  if (!servoEnabled || servoMode == KILL_OFF) {
+    servoPosition = 0;
   }
 }
 
