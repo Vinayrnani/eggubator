@@ -379,7 +379,7 @@ void handleSettingsApi() {
     }
   } else if (server.hasArg("angleAdjustment")) {
     int8_t val = server.arg("angleAdjustment").toInt();
-    if (val >= -15 && val <= 15) {
+    if (val >= -40 && val <= 40) {
       angleAdjustment = val;
       // Immediately apply new angle adjustment to current position
       int currentTarget = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
@@ -388,7 +388,7 @@ void handleSettingsApi() {
       saveSettings();
       server.send(200, "text/plain", "Angle adjustment set to " + String(val));
     } else {
-      server.send(400, "text/plain", "Invalid adjustment (must be -15 to 15)");
+      server.send(400, "text/plain", "Invalid adjustment (must be -40 to 40)");
     }
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();

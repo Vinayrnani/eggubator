@@ -893,7 +893,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div class="row">
           <label>Angle Adjustment (-15 to +15)</label>
-          <input type="number" id="angleAdjustment" min="-15" max="15" onchange="save('angleAdjustment')">
+          <input type="number" id="angleAdjustment" min="-40" max="40" onchange="save('angleAdjustment')">
         </div>
         <div class="row">
           <label>Log Heartbeat Interval</label>
