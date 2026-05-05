@@ -8,8 +8,8 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266HTTPClient.h>
-#include <Servo.h>
 #include <EEPROM.h>
+#include <Ticker.h>
 #include <ESP8266mDNS.h>
 
 #include "config.h"
@@ -55,6 +55,7 @@ int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
+bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
 
 uint32_t elapsedSeconds = 0;
 uint32_t startTimestamp = 0;
@@ -74,21 +75,23 @@ bool atomizerWasOn = false;
 // Web server
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer httpUpdater;
-Servo eggServo;
+
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
+#define EEPROM_SERVO_REST 13
 #define SETTINGS_MAGIC_VAL 0xA6
 
 struct DeviceSettings {
   uint8_t magic;
-  bool stageLockdown; // Kept for layout compatibility if needed, but not used actively from EEPROM
+  bool stageLockdown;
   unsigned long logInterval;
   unsigned long turnInterval;
   unsigned long pulseOnTime;
   uint32_t elapsedSeconds;
   uint32_t startTimestamp;
+  // servoRestingAt45 moved to separate EEPROM address
 };
 
 void saveSettings() {
@@ -121,6 +124,7 @@ void loadSettings() {
     EGG_TURN_INTERVAL = settings.turnInterval;
     elapsedSeconds = settings.elapsedSeconds;
     startTimestamp = settings.startTimestamp;
+    restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
     
     if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
       PULSE_ON_TIME = settings.pulseOnTime;
@@ -294,7 +298,7 @@ void handleControl() {
       servoEnabled = !isKillOff;
       if (isKillOff) {
         servoPosition = 0;
-        eggServo.write(SERVO_CENTER);
+        servoWrite(SERVO_CENTER);
       }
     }
     server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
@@ -362,6 +366,8 @@ void handleSettingsApi() {
     if (action == "newBatch" && server.hasArg("timestamp")) {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
       elapsedSeconds = 0;
+      restingAt45 = true;
+      servoWrite(SERVO_CENTER); // Reset servo to center (90°) for new batch
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
@@ -509,18 +515,39 @@ void autoControl() {
 }
 
 // ============================================
+// SERVO PWM (Native - No Library)
+// ============================================
+Ticker servoTicker;
+volatile int servoPulseWidth = 1500;
+
+void servoISR() {
+  digitalWrite(SERVO_PIN, HIGH);
+  delayMicroseconds(servoPulseWidth);
+  digitalWrite(SERVO_PIN, LOW);
+}
+
+void servoInit() {
+  pinMode(SERVO_PIN, OUTPUT);
+  digitalWrite(SERVO_PIN, LOW);
+  servoTicker.attach(0.02, servoISR);
+}
+
+void servoWrite(int angle) {
+  servoPulseWidth = map(angle, 0, 180, 500, 2500);
+}
+
+// ============================================
 // EGG TURNER
 // ============================================
 void rotateEggs() {
   static bool turning = false;
   static unsigned long turnStartTime = 0;
-  static bool restingAt45 = true; // State: true=45deg, false=135deg
   
   // Disable egg turner during lockdown stage
   if (stageLockdown) {
     servoEnabled = false;
     servoPosition = 0;
-    eggServo.write(SERVO_CENTER);
+    servoWrite(SERVO_CENTER);
     return;
   }
   
@@ -528,6 +555,10 @@ void rotateEggs() {
     turning = true;
     turnStartTime = millis();
     Serial.println("Egg turn started");
+    
+    // Save intended resting state at start of turn for power resilience
+    EEPROM.write(EEPROM_SERVO_REST, !restingAt45 ? 1 : 0);
+    EEPROM.commit();
   }
   
   if (turning) {
@@ -536,28 +567,26 @@ void rotateEggs() {
     int endAngle = restingAt45 ? 135 : 45;
     
     int targetAngle = map(elapsed, 0, EGG_TURN_DURATION, startAngle, endAngle);
-    eggServo.write(targetAngle);
+    servoWrite(targetAngle);
     
-    // Update visual position indicator
-    servoPosition = restingAt45 ? 2 : 1; // 2=Right(135), 1=Left(45)
+    servoPosition = restingAt45 ? 2 : 1;
     
     if (elapsed >= EGG_TURN_DURATION) {
-      eggServo.write(endAngle);
+      servoWrite(endAngle);
       turning = false;
-      restingAt45 = !restingAt45; // Toggle resting state
+      restingAt45 = !restingAt45;
       servoPosition = restingAt45 ? 1 : 2;
       lastServoTurn = millis();
       Serial.println("Egg turn completed");
     }
   } else {
-    // Hold position
-    eggServo.write(restingAt45 ? 45 : 135);
+    servoWrite(restingAt45 ? 45 : 135);
     servoPosition = restingAt45 ? 1 : 2;
   }
   
   if (!servoEnabled || servoMode == KILL_OFF) {
     servoPosition = 0;
-    eggServo.write(SERVO_CENTER);
+    servoWrite(SERVO_CENTER);
   }
 }
 
@@ -627,7 +656,6 @@ void setup() {
   digitalWrite(RELAY_FAN, LOW);
 
   initDHT();
-  eggServo.attach(SERVO_PIN, 500, 2500);
 
   initRecovery();
   
@@ -638,6 +666,13 @@ void setup() {
 
   initLogging(bootId);
   loadSettings();
+  
+  pinMode(SERVO_PIN, OUTPUT);
+  digitalWrite(SERVO_PIN, LOW);
+  int savedAngle = restingAt45 ? 45 : 135;
+  servoPulseWidth = map(savedAngle, 0, 180, 500, 2500);
+  servoTicker.attach(0.02, servoISR);
+  
   connectWiFi();
 
   // Start mDNS responder for EGGubator.local
