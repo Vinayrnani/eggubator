@@ -896,6 +896,10 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
           </select>
         </div>
         <div class="row">
+          <label>Angle Adjustment (-15 to +15)</label>
+          <input type="number" id="angleAdjustment" min="-15" max="15" onchange="save('angleAdjustment')">
+        </div>
+        <div class="row">
           <label>Log Heartbeat Interval</label>
           <select id="logInterval" onchange="save('logInterval')">
             <option value="5000">5 sec</option>
@@ -961,6 +965,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         const m = await mockRes.json();
         document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
         document.getElementById('eggTurnDuration').value = m.eggTurnDuration;
+        document.getElementById('angleAdjustment').value = m.angleAdjustment;
         document.getElementById('logInterval').value = m.logInterval;
         document.getElementById('pulseOnTime').value = m.pulseOnTime;
       } catch (e) {

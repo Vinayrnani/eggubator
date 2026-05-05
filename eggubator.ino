@@ -57,6 +57,7 @@ unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
 bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
+int8_t angleAdjustment = 0;
 
 uint32_t elapsedSeconds = 0;
 uint32_t startTimestamp = 0;
@@ -82,7 +83,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
 #define EEPROM_SERVO_REST 13
-#define SETTINGS_MAGIC_VAL 0xA7
+#define SETTINGS_MAGIC_VAL 0xA8
 
 struct DeviceSettings {
   uint8_t magic;
@@ -93,6 +94,7 @@ struct DeviceSettings {
   uint32_t elapsedSeconds;
   uint32_t startTimestamp;
   uint8_t turnDurationSeconds;
+  int8_t angleAdjustment;
 };
 
 void saveSettings() {
@@ -105,6 +107,7 @@ void saveSettings() {
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
   if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
   if (settings.turnDurationSeconds != (EGG_TURN_DURATION / 1000)) { settings.turnDurationSeconds = (EGG_TURN_DURATION / 1000); changed = true; }
+  if (settings.angleAdjustment != angleAdjustment) { settings.angleAdjustment = angleAdjustment; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   if (settings.elapsedSeconds != elapsedSeconds) { settings.elapsedSeconds = elapsedSeconds; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
@@ -125,6 +128,7 @@ void loadSettings() {
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
     EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
+    angleAdjustment = settings.angleAdjustment;
     elapsedSeconds = settings.elapsedSeconds;
     startTimestamp = settings.startTimestamp;
     restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
@@ -368,6 +372,15 @@ void handleSettingsApi() {
     } else {
       server.send(400, "text/plain", "Invalid duration (must be 1-10s)");
     }
+  } else if (server.hasArg("angleAdjustment")) {
+    int8_t val = server.arg("angleAdjustment").toInt();
+    if (val >= -15 && val <= 15) {
+      angleAdjustment = val;
+      saveSettings();
+      server.send(200, "text/plain", "Angle adjustment set to " + String(val));
+    } else {
+      server.send(400, "text/plain", "Invalid adjustment (must be -15 to 15)");
+    }
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();
     PULSE_ON_TIME = val;
@@ -418,6 +431,7 @@ void handleSettingsApi() {
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
                   ",\"eggTurnDuration\":" + String(EGG_TURN_DURATION / 1000) +
+                  ",\"angleAdjustment\":" + String(angleAdjustment) +
                   ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                   ",\"startTimestamp\":" + String(startTimestamp) +
                   ",\"elapsedSeconds\":" + String(elapsedSeconds) +
@@ -576,8 +590,8 @@ void rotateEggs() {
   
   if (turning) {
     unsigned long elapsed = millis() - turnStartTime;
-    int startAngle = restingAt45 ? 45 : 135;
-    int endAngle = restingAt45 ? 135 : 45;
+    int startAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+    int endAngle = restingAt45 ? (135 + angleAdjustment) : (45 - angleAdjustment);
     
     int targetAngle = map(elapsed, 0, EGG_TURN_DURATION, startAngle, endAngle);
     servoWrite(targetAngle);
@@ -593,7 +607,7 @@ void rotateEggs() {
       Serial.println("Egg turn completed");
     }
   } else {
-    servoWrite(restingAt45 ? 45 : 135);
+    servoWrite(restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment));
     servoPosition = restingAt45 ? 1 : 2;
   }
   
