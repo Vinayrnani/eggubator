@@ -18,6 +18,9 @@ extern float TARGET_HUMIDITY;
 #define RELAY_ATOMIZER D2
 #define RELAY_FAN D3
 #define SERVO_PIN D5
+#define SERVO_PWM_CHANNEL 0
+#define SERVO_FREQ 50
+#define SERVO_RESOLUTION 16
 
 // Timing Constants
 extern unsigned long PULSE_ON_TIME;
@@ -25,7 +28,7 @@ extern unsigned long PULSE_ON_TIME;
 #define FAN_EXTEND_TIME 3000
 extern unsigned long LOG_INTERVAL;
 extern unsigned long EGG_TURN_INTERVAL;
-#define EGG_TURN_DURATION 10000      // 10 seconds
+extern unsigned long EGG_TURN_DURATION;
 #define SERVO_CENTER 90
 #define SERVO_ANGLE 45
 

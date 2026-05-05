@@ -31,8 +31,9 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 #define AUTO 1
 
 // Configurable timing (can be changed via web)
-unsigned long LOG_INTERVAL = 90000;
+unsigned long LOG_INTERVAL = 10000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
+unsigned long EGG_TURN_DURATION = 10000;
 unsigned long PULSE_ON_TIME = 3000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
@@ -81,7 +82,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
 #define EEPROM_SERVO_REST 13
-#define SETTINGS_MAGIC_VAL 0xA6
+#define SETTINGS_MAGIC_VAL 0xA7
 
 struct DeviceSettings {
   uint8_t magic;
@@ -91,7 +92,7 @@ struct DeviceSettings {
   unsigned long pulseOnTime;
   uint32_t elapsedSeconds;
   uint32_t startTimestamp;
-  // servoRestingAt45 moved to separate EEPROM address
+  uint8_t turnDurationSeconds;
 };
 
 void saveSettings() {
@@ -103,6 +104,7 @@ void saveSettings() {
   if (settings.stageLockdown != stageLockdown) { settings.stageLockdown = stageLockdown; changed = true; }
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
   if (settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
+  if (settings.turnDurationSeconds != (EGG_TURN_DURATION / 1000)) { settings.turnDurationSeconds = (EGG_TURN_DURATION / 1000); changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   if (settings.elapsedSeconds != elapsedSeconds) { settings.elapsedSeconds = elapsedSeconds; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
@@ -122,6 +124,7 @@ void loadSettings() {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
+    EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
     elapsedSeconds = settings.elapsedSeconds;
     startTimestamp = settings.startTimestamp;
     restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
@@ -356,6 +359,15 @@ void handleSettingsApi() {
     EGG_TURN_INTERVAL = val;
     saveSettings();
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
+  } else if (server.hasArg("eggTurnDuration")) {
+    uint8_t val = server.arg("eggTurnDuration").toInt();
+    if (val > 0 && val <= 10) {
+      EGG_TURN_DURATION = val * 1000;
+      saveSettings();
+      server.send(200, "text/plain", "Egg sweep duration set to " + String(val) + "s");
+    } else {
+      server.send(400, "text/plain", "Invalid duration (must be 1-10s)");
+    }
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();
     PULSE_ON_TIME = val;
@@ -405,6 +417,7 @@ void handleSettingsApi() {
                   ",\"hum\":" + String(mockHum) +
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
+                  ",\"eggTurnDuration\":" + String(EGG_TURN_DURATION / 1000) +
                   ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                   ",\"startTimestamp\":" + String(startTimestamp) +
                   ",\"elapsedSeconds\":" + String(elapsedSeconds) +
