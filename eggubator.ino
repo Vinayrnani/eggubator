@@ -568,7 +568,6 @@ void rotateEggs() {
   if (stageLockdown) {
     servoEnabled = false;
     servoPosition = 0;
-    if (!myServo.isMoving()) myServo.startEaseTo(SERVO_CENTER, 2000); // Smooth center on lockdown
     return;
   }
   
@@ -617,10 +616,6 @@ void rotateEggs() {
   
   if (!servoEnabled || servoMode == KILL_OFF) {
     servoPosition = 0;
-    if (!myServo.isMoving()) {
-        myServo.setSpeed(90.0 / 2.0); // Smooth to center in 2 seconds
-        myServo.startEaseTo(SERVO_CENTER);
-    }
   }
 }
 
