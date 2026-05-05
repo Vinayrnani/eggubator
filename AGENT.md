@@ -37,7 +37,7 @@ cp eggubator.ino config.h *.h firmware.bin /storage/emulated/0/ArduinoDroid/sket
 | Command | Action |
 |---------|--------|
 | `uuu` | Update chat.log file with prompt and response after every prompt |
-| `PPP` | Commit and push to git repository |
+| `PPP` | 1. Increment FIRMWARE_VERSION in updates.h 2. Commit and push to git repository |
 | `ddd` | Deploy the compiled binary via OTA update to ESP device (192.168.100.100) |
 | `DDD` | 1. Compile firmware 2. Deploy OTA |
 

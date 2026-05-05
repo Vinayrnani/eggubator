@@ -85,6 +85,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
 #define EEPROM_SERVO_REST 13
+#define EEPROM_ELAPSED_ADDR 14
 #define SETTINGS_MAGIC_VAL 0xA8
 
 struct DeviceSettings {
@@ -93,7 +94,6 @@ struct DeviceSettings {
   unsigned long logInterval;
   unsigned long turnInterval;
   unsigned long pulseOnTime;
-  uint32_t elapsedSeconds;
   uint32_t startTimestamp;
   uint8_t turnDurationSeconds;
   int8_t angleAdjustment;
@@ -111,8 +111,9 @@ void saveSettings() {
   if (settings.turnDurationSeconds != (EGG_TURN_DURATION / 1000)) { settings.turnDurationSeconds = (EGG_TURN_DURATION / 1000); changed = true; }
   if (settings.angleAdjustment != angleAdjustment) { settings.angleAdjustment = angleAdjustment; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
-  if (settings.elapsedSeconds != elapsedSeconds) { settings.elapsedSeconds = elapsedSeconds; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
+  
+  EEPROM.write(EEPROM_ELAPSED_ADDR, elapsedSeconds);
   
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
@@ -131,7 +132,7 @@ void loadSettings() {
     EGG_TURN_INTERVAL = settings.turnInterval;
     EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
     angleAdjustment = settings.angleAdjustment;
-    elapsedSeconds = settings.elapsedSeconds;
+    elapsedSeconds = EEPROM.read(EEPROM_ELAPSED_ADDR);
     startTimestamp = settings.startTimestamp;
     restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
     
@@ -760,7 +761,8 @@ void loop() {
   }
 
   if (currentMillis - lastEEPROMSaveMillis >= 10800000) { // 3 hours
-    saveSettings();
+    EEPROM.write(EEPROM_ELAPSED_ADDR, elapsedSeconds);
+    EEPROM.commit();
     lastEEPROMSaveMillis = currentMillis;
   }
 
