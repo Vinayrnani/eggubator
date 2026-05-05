@@ -871,7 +871,6 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         <div class="row">
           <label>Egg Turn Interval</label>
           <select id="eggTurnInterval" onchange="save('eggTurnInterval')">
-            <option value="120000">2 min</option>
             <option value="1800000">30 min</option>
             <option value="3600000">1 hour</option>
             <option value="5400000">1.5 hours</option>
@@ -963,6 +962,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
 
         const mockRes = await fetch('/settings/api');
         const m = await mockRes.json();
+        updateOneMinOption();
         document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
         document.getElementById('eggTurnDuration').value = m.eggTurnDuration;
         document.getElementById('angleAdjustment').value = m.angleAdjustment;
@@ -972,6 +972,27 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         console.error("Fetch error", e);
       } finally {
         setTimeout(mainLoop, 5000); 
+      }
+    }
+
+    function updateOneMinOption() {
+      const isMock = document.getElementById('mockEnable').checked;
+      const isAuto = document.getElementById('autoSim').checked;
+      const select = document.getElementById('eggTurnInterval');
+      const opt1min = document.getElementById('opt1min');
+
+      if (isMock || isAuto) {
+        if (!opt1min) {
+            let opt = document.createElement('option');
+            opt.value = '60000';
+            opt.id = 'opt1min';
+            opt.textContent = '1 min';
+            select.appendChild(opt);
+        }
+      } else {
+        if (opt1min) {
+            select.removeChild(opt1min);
+        }
       }
     }
 
@@ -989,6 +1010,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       }
       
       document.getElementById('mockFields').style.display = document.getElementById('mockEnable').checked ? 'block' : 'none';
+      updateOneMinOption();
       fetch(endpoint).then(() => fetch('/status'));
     }
 
