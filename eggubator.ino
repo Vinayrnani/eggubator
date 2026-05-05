@@ -558,64 +558,43 @@ void servoInit() {
 // EGG TURNER
 // ============================================
 void rotateEggs() {
-  static bool turning = false;
-  static unsigned long turnStartTime = 0;
-  
   // Update the ServoEasing engine
   myServo.update();
 
-  // Disable egg turner during lockdown stage
-  if (stageLockdown) {
-    servoEnabled = false;
+  // If turner is disabled or in lockdown, do not move the servo
+  if (stageLockdown || !servoEnabled || servoMode == KILL_OFF) {
     servoPosition = 0;
     return;
   }
   
-  if (servoEnabled && servoMode == AUTO && !turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
-    turning = true;
-    turnStartTime = millis();
+  // Trigger turn if interval elapsed
+  if (servoMode == AUTO && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
     Serial.println("Egg turn started");
     
-    // Save intended resting state at start of turn for power resilience
-    EEPROM.write(EEPROM_SERVO_REST, !restingAt45 ? 1 : 0);
+    // Toggle state
+    restingAt45 = !restingAt45;
+    
+    // Save state at start of turn
+    EEPROM.write(EEPROM_SERVO_REST, restingAt45 ? 1 : 0);
     EEPROM.commit();
     
-    int endAngle = restingAt45 ? (135 + angleAdjustment) : (45 - angleAdjustment);
-    endAngle = constrain(endAngle, 0, 180);
+    // Calculate new position
+    int targetAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+    targetAngle = constrain(targetAngle, 0, 180);
+    
+    // Smooth move
     int currentAngle = myServo.getCurrentAngle();
-    float distance = abs(endAngle - currentAngle);
+    float distance = abs(targetAngle - currentAngle);
     float durationSeconds = (float)EGG_TURN_DURATION / 1000.0;
-    float speed = (distance > 0) ? (distance / durationSeconds) : 5.0; // Avoid division by zero
+    float speed = (distance > 0) ? (distance / durationSeconds) : 5.0;
+    
     myServo.setSpeed(speed);
-    myServo.startEaseTo(endAngle);
-  }
-  
-  if (turning) {
-    servoPosition = restingAt45 ? 2 : 1;
+    myServo.startEaseTo(targetAngle);
     
-    if (!myServo.isMoving()) {
-      turning = false;
-      restingAt45 = !restingAt45;
-      servoPosition = restingAt45 ? 1 : 2;
-      lastServoTurn = millis();
-      Serial.println("Egg turn completed");
-    }
-  } else {
-    // If adjustment was changed while resting, we need a smooth transition to the new resting angle
-    int currentTarget = myServo.getEndMicrosecondsOrUnits(); // Safe way to check intended end angle
-    int intendedRestAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-    intendedRestAngle = constrain(intendedRestAngle, 0, 180);
-    
-    if (currentTarget != intendedRestAngle && !myServo.isMoving()) {
-       myServo.setSpeed(abs(intendedRestAngle - myServo.getCurrentAngle()) / 2.0);
-       myServo.startEaseTo(intendedRestAngle); // 2-second smooth transition to new adjusted rest angle
-    }
-    
+    // Update tracking
     servoPosition = restingAt45 ? 1 : 2;
-  }
-  
-  if (!servoEnabled || servoMode == KILL_OFF) {
-    servoPosition = 0;
+    lastServoTurn = millis();
+    Serial.println("Egg turn completed (started move)");
   }
 }
 
