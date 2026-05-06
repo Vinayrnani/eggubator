@@ -976,19 +976,19 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       const isMock = document.getElementById('mockEnable').checked;
       const isAuto = document.getElementById('autoSim').checked;
       const select = document.getElementById('eggTurnInterval');
-      const opt20sec = document.getElementById('opt20sec');
+      const opt5sec = document.getElementById('opt5sec');
 
       if (isMock || isAuto) {
-        if (!opt20sec) {
+        if (!opt5sec) {
             let opt = document.createElement('option');
-            opt.value = '20000';
-            opt.id = 'opt20sec';
-            opt.textContent = '20 sec';
+            opt.value = '5000';
+            opt.id = 'opt5sec';
+            opt.textContent = '5 sec';
             select.appendChild(opt);
         }
       } else {
-        if (opt20sec) {
-            select.removeChild(opt20sec);
+        if (opt5sec) {
+            select.removeChild(opt5sec);
         }
       }
     }
