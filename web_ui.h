@@ -11,61 +11,44 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EGGubator Dashboard</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <style>
-    :root {
-      --primary: #1877f2;
-      --primary-dark: #166fe5;
-      --primary-soft: #e7f3ff;
-      --bg: #fdfaf6;
-      --card-bg: #ffffff;
-      --text: #1c1e21;
-      --text-muted: #65676b;
-      --on: #42b72a;
-      --off: #f02849;
-      --idle: #8a8d91;
-    }
+    :root { --primary: #1877f2; --primary-dark: #166fe5; --bg: #fdfaf6; --on: #42b72a; --off: #f02849; --idle: #8a8d91; }
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: #1c1e21; line-height: 1.5; }
     .container { max-width: 1100px; margin: 0 auto; padding: 10px; }
-    .header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 24px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px 28px; border-radius: 20px; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3); color: white; }
-    h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: white; text-align: center; }
-    .card { background: var(--card-bg); padding: 5px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 5px; border: 1px solid rgba(0,0,0,0.05); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
-    .stat-card { background: #ffffff; padding: 5px; border-radius: 12px; text-align: center; border: 1px solid #edf0f5; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .stat-label { font-size: 8px; color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-    .stat-value { font-size: 16px; font-weight: 800; margin-top: 2px; }
-    .target-val { font-size: 9px; color: #adb5bd; margin-top: 6px; font-weight: 600; }
+    .header { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); padding: 20px; border-radius: 16px; margin-bottom: 16px; color: white; text-align: center; }
+    .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
+    .card { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+    .stat-card { background: #fff; padding: 8px; border-radius: 10px; text-align: center; border: 1px solid #edf0f5; }
+    .stat-label { font-size: 9px; color: #65676b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 18px; font-weight: 800; margin-top: 4px; }
+    .target-val { font-size: 10px; color: #adb5bd; margin-top: 4px; font-weight: 600; }
     .on { color: var(--on); }
     .off { color: var(--off); }
     .idle { color: var(--idle); }
-    .badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .badge { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-incubation { background: #e7f3ff; color: var(--primary); }
     .badge-lockdown { background: #fff4e5; color: #d97706; }
-    select, button { padding: 12px 20px; border-radius: 12px; border: 1px solid #e0e4e9; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; outline: none; }
-    button { background: var(--primary); color: white; border: none; box-shadow: 0 4px 8px rgba(24, 119, 242, 0.25); }
-    button:hover { background: var(--primary-dark); transform: scale(1.02); }
-    .refresh-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 600; }
-    .refresh-control select { padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 12px; appearance: auto; -webkit-appearance: auto; }
-    .refresh-control select option { color: black; }
-    .chart-box { height: 400px; width: 100%; margin-top: 5px; position: relative; }
-    .chart-box canvas { width: 100% !important; height: 100% !important; }
-    .footer { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 40px; padding: 30px 0; border-top: 1px solid #e0e4e9; }
-    .footer a { color: var(--primary); text-decoration: none; font-weight: 700; }
-    h3 { margin: 0 0 5px 0; font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 8px; }
-    .icon { font-size: 24px; transition: all 0.3s ease; display: inline-block; color: #8a8d91; }
+    .refresh-control { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.9); font-weight: 600; }
+    .chart-box { height: 350px; width: 100%; margin-top: 8px; }
+    .footer { text-align: center; font-size: 12px; color: #65676b; margin-top: 30px; padding: 20px 0; border-top: 1px solid #e0e4e9; }
+    h3 { margin: 0 0 8px 0; font-size: 16px; font-weight: 700; color: #333; }
+    .icon { font-size: 22px; color: #8a8d91; }
     .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
     .fan-active { color: #42b72a !important; }
-    .atomizer-active { color: #1877f2 !important; animation: spray-puff 0.5s infinite; }
-    .atomizer-idle { filter: grayscale(100%); opacity: 0.5; color: #8a8d91; }
-    @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 15px #f39c12); } }
-    @keyframes spray-puff { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
-    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(253, 250, 246, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.3s ease; }
-    .spinner { width: 50px; height: 50px; border: 5px solid #e7f3ff; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .atomizer-active { color: var(--primary) !important; animation: spray-puff 0.5s infinite; }
+    .atomizer-idle { filter: grayscale(100%); opacity: 0.5; }
+    @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 12px #f39c12); } }
+    @keyframes spray-puff { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+    #loadingOverlay { position: fixed; inset: 0; background: rgba(253, 250, 246, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    .spinner { width: 40px; height: 40px; border: 4px solid #e7f3ff; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -797,133 +780,139 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
   <style>
-    body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #1c1e21; }
-    .card { background: white; padding: 28px; border-radius: 20px; max-width: 540px; margin: 0 auto 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
-    h3 { margin-top: 0; color: #1877f2; font-weight: 800; border-bottom: 2px solid #f0f2f5; padding-bottom: 12px; margin-bottom: 24px; }
-    .row { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
-    input, select { padding: 12px; border-radius: 10px; border: 1px solid #e0e4e9; width: 140px; font-weight: 600; }
-    button { padding: 14px; width: 100%; cursor: pointer; background: #1877f2; color: white; border: none; border-radius: 10px; font-weight: 800; margin-top: 10px; transition: all 0.2s; }
-    button:hover { background: #166fe5; }
-    .sys-grid { display: grid; grid-template-columns: 1fr; }
-    .sys-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f3f5f8; font-size: 14px; }
-    .sys-item span:first-child { color: #65676b; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-    .sys-item span:last-child { color: #1c1e21; font-weight: 700; font-family: monospace; font-size: 15px; }
-    a { display: block; text-align: center; margin-top: 24px; color: #1877f2; text-decoration: none; font-weight: 800; }
-    label { font-weight: 700; color: #444; font-size: 14px; }
-    .danger { background: #f02849 !important; margin-top: 30px; }
-    .danger:hover { background: #d02040 !important; }
+    body { font-family: system-ui, sans-serif; padding: 15px; background: #f8f9fa; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    h3 { color: #1877f2; font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 10px; margin: 0 0 16px 0; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-weight: 600; color: #444; margin-bottom: 6px; }
+    .form-control, .form-select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 14px; }
+    .form-select { background-color: #fff; }
+    .btn { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: #1877f2; color: #fff; width: 100%; }
+    .btn-outline { background: #e7f3ff; color: #1877f2; flex: 1; }
+    .btn-danger { background: #dc3545; color: #fff; width: 100%; margin-top: 20px; }
+    .btn-sm { padding: 8px 12px; font-size: 13px; }
+    .btn-group { display: flex; gap: 8px; margin-bottom: 16px; }
+    .sys-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .sys-item span:first-child { color: #6c757d; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    .sys-item span:last-child { color: #212529; font-weight: 600; font-family: monospace; }
+    .day-display { text-align: center; margin-bottom: 16px; }
+    .day-display .label { font-size: 11px; color: #888; text-transform: uppercase; font-weight: 700; }
+    .day-display .value { font-size: 40px; font-weight: 800; color: #1877f2; line-height: 1.2; margin: 8px 0; }
+    .day-display .sub { font-size: 13px; color: #888; }
+    .angle-control { display: flex; align-items: center; gap: 8px; }
+    .angle-control button { width: 36px; padding: 8px; background: #e7f3ff; color: #1877f2; border: none; border-radius: 6px; font-weight: 700; }
+    .angle-control input { width: 60px; text-align: center; padding: 8px; border-radius: 6px; border: 1px solid #ddd; }
+    .checkbox-group { display: flex; align-items: center; gap: 8px; }
+    .checkbox-group input { width: 20px; height: 20px; }
+    a { display: block; text-align: center; color: #1877f2; font-weight: 600; margin-top: 16px; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="card">
     <h3>System Telemetry</h3>
-    <div class="sys-grid">
-      <div class="sys-item"><span>IP Address</span><span id="ip">--</span></div>
+    <div><div class="sys-item"><span>IP Address</span><span id="ip">--</span></div>
       <div class="sys-item"><span>WiFi RSSI</span><span id="rssi">-- dBm</span></div>
       <div class="sys-item"><span>Free RAM</span><span id="heap">-- KB</span></div>
       <div class="sys-item"><span>Current Sector</span><span id="sector">--</span></div>
       <div class="sys-item"><span>Logs Since Boot</span><span id="bootLogs">--</span></div>
       <div class="sys-item"><span>Dexie Records</span><span id="dexieCount">--</span></div>
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
-      <div class="sys-item"><span>Uptime</span><span id="uptimeSys">--</span></div>
-    </div>
+      <div class="sys-item"><span>Uptime</span><span id="uptimeSys">--</span></div></div>
   </div>
 
   <div class="card">
     <h3>Incubation Cycle</h3>
-    <div style="text-align:center; margin-bottom:20px;">
-      <div style="font-size:12px; font-weight:700; color:#65676b; text-transform:uppercase;">Current Day</div>
-      <div style="font-size:48px; font-weight:800; color:#1877f2; line-height:1; margin:10px 0;" id="currentDayVal">--</div>
-      <div style="font-size:14px; font-weight:600; color:#8a8d91;">Started: <span id="startDateVal">--</span></div>
+    <div class="day-display">
+      <div class="label">Current Day</div>
+      <div class="value" id="currentDayVal">--</div>
+      <div class="sub">Started: <span id="startDateVal">--</span></div>
     </div>
-    <div style="display:flex; gap:10px; margin-bottom:20px;">
-      <button onclick="adjustDay(-1)" style="background:#e7f3ff; color:#1877f2;">- 1 Day</button>
-      <button onclick="adjustDay(1)" style="background:#e7f3ff; color:#1877f2;">+ 1 Day</button>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="adjustDay(-1)">- 1 Day</button>
+      <button class="btn btn-outline" onclick="adjustDay(1)">+ 1 Day</button>
     </div>
-    <button class="danger" style="margin-top:0;" onclick="startNewBatch()">Start New Batch (Day 0)</button>
+    <button class="btn btn-primary" style="margin-top:0;" onclick="startNewBatch()">Start New Batch (Day 0)</button>
   </div>
 
-    <div class="card">
-      <h3>Sensor Simulation</h3>
-      <div class="row">
-        <label>Use Mock Sensor</label>
-        <input type="checkbox" id="mockEnable" style="width:24px; height:24px;" onchange="toggle('enable')">
-      </div>
-      <div class="row">
-        <label>Physics Simulation</label>
-        <input type="checkbox" id="autoSim" style="width:24px; height:24px;" onchange="toggle('autosim')">
-      </div>
-      <div id="mockFields">
-        <div class="row">
-          <label>Mock Temp (°C)</label>
-          <input type="number" id="mTemp" step="0.1" value="37.5">
-        </div>
-        <div class="row">
-          <label>Mock Hum (%)</label>
-          <input type="number" id="mHum" step="0.1" value="60">
-        </div>
-        <button onclick="setMock()">Apply Simulation Values</button>
-      </div>
+  <div class="card">
+    <h3>Sensor Simulation</h3>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="mockEnable" onchange="toggle('enable')">
+      <label>Use Mock Sensor</label>
     </div>
+    <div class="checkbox-group form-group">
+      <input type="checkbox" id="autoSim" onchange="toggle('autosim')">
+      <label>Physics Simulation</label>
+    </div>
+    <div id="mockFields">
+      <div class="form-group">
+        <label>Mock Temp (°C)</label>
+        <input type="number" id="mTemp" class="form-control" step="0.1" value="37.5">
+      </div>
+      <div class="form-group">
+        <label>Mock Hum (%)</label>
+        <input type="number" id="mHum" class="form-control" step="0.1" value="60">
+      </div>
+      <button class="btn btn-primary" onclick="setMock()">Apply Simulation Values</button>
+    </div>
+  </div>
 
   <div class="card">
     <h3>Maintenance</h3>
-        <div class="row">
-          <label>Egg Turn Interval</label>
-          <select id="eggTurnInterval" onchange="save('eggTurnInterval')">
-            <option value="1800000">30 min</option>
-            <option value="3600000">1 hour</option>
-            <option value="7200000" selected>2 hours</option>
-            <option value="10800000">3 hours</option>
-            <option value="14400000">4 hours</option>
-            <option value="21600000">6 hours</option>
-            <option value="28800000">8 hours</option>
-          </select>
-        </div>
-        <div class="row">
-          <label>Egg Sweep Duration</label>
-          <select id="eggTurnDuration" onchange="save('eggTurnDuration')">
-            <option value="1">1 sec</option>
-            <option value="2">2 sec</option>
-            <option value="3">3 sec</option>
-            <option value="4">4 sec</option>
-            <option value="5">5 sec</option>
-            <option value="6">6 sec</option>
-            <option value="7">7 sec</option>
-            <option value="8">8 sec</option>
-            <option value="9">9 sec</option>
-            <option value="10">10 sec</option>
-          </select>
-        </div>
-        <div class="row">
-          <label>Angle Adjustment (-40 to +40)</label>
-          <div style="display:flex;align-items:center;gap:5px;">
-            <button type="button" onclick="adjustAngle(-5)" style="width:36px;padding:8px;">-</button>
-            <input type="number" id="angleAdjustment" min="-40" max="40" step="5" value="0" readonly style="width:60px;text-align:center;" onchange="save('angleAdjustment')">
-            <button type="button" onclick="adjustAngle(5)" style="width:36px;padding:8px;">+</button>
-          </div>
-        </div>
-        <div class="row">
-          <label>Log Heartbeat Interval</label>
-          <select id="logInterval" onchange="save('logInterval')">
-            <option value="5000">5 sec</option>
-            <option value="10000">10 sec</option>
-            <option value="30000">30 sec</option>
-            <option value="60000">60 sec</option>
-            <option value="90000">90 sec</option>
-            <option value="180000">3 min</option>
-          </select>
-        </div>
-        <div class="row">
-          <label>Atomizer Spray Time</label>
-          <select id="pulseOnTime" onchange="save('pulseOnTime')">
-            <option value="2000">2 sec</option>
-            <option value="3000">3 sec</option>
-            <option value="4000">4 sec</option>
-            <option value="5000">5 sec</option>
-          </select>
-        </div>
-    <button class="danger" onclick="reboot()">Restart Controller</button>
+    <div class="form-group">
+      <label>Egg Turn Interval</label>
+      <select id="eggTurnInterval" class="form-select" onchange="save('eggTurnInterval')">
+        <option value="7200000" selected>2 hours</option>
+        <option value="10800000">3 hours</option>
+        <option value="14400000">4 hours</option>
+        <option value="21600000">6 hours</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Egg Sweep Duration</label>
+      <select id="eggTurnDuration" class="form-select" onchange="save('eggTurnDuration')">
+        <option value="1">1 sec</option>
+        <option value="2">2 sec</option>
+        <option value="3">3 sec</option>
+        <option value="4">4 sec</option>
+        <option value="5">5 sec</option>
+        <option value="6">6 sec</option>
+        <option value="7">7 sec</option>
+        <option value="8">8 sec</option>
+        <option value="9">9 sec</option>
+        <option value="10">10 sec</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Angle Adjustment (-40 to +40)</label>
+      <div class="angle-control">
+        <button type="button" onclick="adjustAngle(-5)">-</button>
+        <input type="number" id="angleAdjustment" min="-40" max="40" step="5" value="0" readonly onchange="save('angleAdjustment')">
+        <button type="button" onclick="adjustAngle(5)">+</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Log Heartbeat Interval</label>
+      <select id="logInterval" class="form-select" onchange="save('logInterval')">
+        <option value="5000">5 sec</option>
+        <option value="10000">10 sec</option>
+        <option value="30000">30 sec</option>
+        <option value="60000">60 sec</option>
+        <option value="90000">90 sec</option>
+        <option value="180000">3 min</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Atomizer Spray Time</label>
+      <select id="pulseOnTime" class="form-select" onchange="save('pulseOnTime')">
+        <option value="2000">2 sec</option>
+        <option value="3000">3 sec</option>
+        <option value="4000">4 sec</option>
+        <option value="5000">5 sec</option>
+      </select>
+    </div>
+    <button class="btn btn-danger" onclick="reboot()">Restart Controller</button>
   </div>
   
   <a href="/">&larr; Return to Dashboard</a>
