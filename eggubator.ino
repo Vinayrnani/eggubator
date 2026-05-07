@@ -8,7 +8,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266HTTPClient.h>
-#include <ServoSmooth.h>
+#include <Servo.h>
 #include <EEPROM.h>
 #include <ESP8266mDNS.h>
 
@@ -59,7 +59,7 @@ unsigned long lastServoTurn = 0;
 bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
 int8_t angleAdjustment = 0;
 
-ServoSmooth myServo;
+Servo myServo;
 
 uint32_t elapsedSeconds = 0;
 uint32_t startTimestamp = 0;
@@ -304,14 +304,42 @@ void handleControl() {
         digitalWrite(RELAY_FAN, LOW);
       }
     } else if (device == "servo") {
-      servoMode = isKillOff ? KILL_OFF : AUTO;
-      servoEnabled = !isKillOff;
-      if (isKillOff) {
-        servoPosition = 0;
-        myServo.setTargetDeg(SERVO_CENTER);
+      if (mode == "left") {
+        servoEnabled = true;
+        restingAt45 = true;
+        myServo.attach(SERVO_PIN, 544, 2450);
+        myServo.write(0);
+        delay(500);
+        myServo.detach();
+        server.send(200, "text/plain", "Servo moved to left (0)");
+      } else if (mode == "right") {
+        servoEnabled = true;
+        restingAt45 = false;
+        myServo.attach(SERVO_PIN, 544, 2450);
+        myServo.write(180);
+        delay(500);
+        myServo.detach();
+        server.send(200, "text/plain", "Servo moved to right (180)");
+      } else if (mode == "center") {
+        servoEnabled = true;
+        myServo.attach(SERVO_PIN, 544, 2450);
+        myServo.write(90);
+        delay(500);
+        myServo.detach();
+        server.send(200, "text/plain", "Servo moved to center (90)");
+      } else {
+        servoMode = isKillOff ? KILL_OFF : AUTO;
+        servoEnabled = !isKillOff;
+        if (isKillOff) {
+          servoPosition = 0;
+          myServo.attach(SERVO_PIN, 544, 2450);
+          myServo.write(90);
+          delay(500);
+          myServo.detach();
+        }
+        server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
       }
     }
-    server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
   } else {
     server.send(200, "text/plain", "Invalid request");
   }
@@ -382,9 +410,12 @@ void handleSettingsApi() {
     if (val >= -40 && val <= 40) {
       angleAdjustment = val;
       // Immediately apply new angle adjustment to current position
-      int currentTarget = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+      int currentTarget = restingAt45 ? (0 + angleAdjustment) : (180 - angleAdjustment);
       currentTarget = constrain(currentTarget, 0, 180);
-      myServo.setTargetDeg(currentTarget);
+      myServo.attach(SERVO_PIN, 544, 2450);
+      myServo.write(currentTarget);
+      delay(500);
+      myServo.detach();
       saveSettings();
       server.send(200, "text/plain", "Angle adjustment set to " + String(val));
     } else {
@@ -403,7 +434,10 @@ void handleSettingsApi() {
       restingAt45 = true;
       EEPROM.write(EEPROM_SERVO_REST, 1);  // Save as left (true = 1)
       EEPROM.commit();
-      myServo.setTargetDeg(90); // Reset servo to center (90°) for new batch
+      myServo.attach(SERVO_PIN, 544, 2450);
+      myServo.write(90);
+      delay(500);
+      myServo.detach();
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
@@ -557,21 +591,23 @@ void autoControl() {
 // ============================================
 
 void servoInit() {
-  int initialAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+  int initialAngle = restingAt45 ? (0 - angleAdjustment) : (180 + angleAdjustment);
   initialAngle = constrain(initialAngle, 0, 180);
   
-  myServo.attach(SERVO_PIN, 500, 2400, initialAngle);
-  myServo.smoothStart();  // Softens initial movement from unknown position (blocking ~1s)
-  myServo.setSpeed(30);
-  myServo.setAccel(0.3);  // Reduced acceleration for smoother start/stop
-  myServo.setAutoDetach(false);
+  myServo.attach(SERVO_PIN, 544, 2450);
+  myServo.write(initialAngle);
+  delay(500);
+  myServo.detach();
 }
 
 // ============================================
-// EGG TURNER
+// EGG TURNER - Manual smooth movement with standard Servo
 // ============================================
 void rotateEggs() {
-  bool targetReached = myServo.tick();  // tick() returns true when target reached
+  static bool turning = false;
+  static unsigned long turnStartTime = 0;
+  static int startAngle = 0;
+  static int targetAngle = 180;
   
   // Disable egg turner during lockdown stage
   if (stageLockdown) {
@@ -580,20 +616,20 @@ void rotateEggs() {
     return;
   }
   
-  // Check if servo reached target and interval has passed
-  if (targetReached && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
-    // Calculate target angle (flip to opposite side based on current restingAt45)
-    int targetAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-    targetAngle = constrain(targetAngle, 0, 180);
+  // Trigger turn if interval elapsed
+  if (!turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
+    turning = true;
+    turnStartTime = millis();
     
-    // Calculate speed based on duration (90° distance between rest positions)
-    float speed = 90.0 / (EGG_TURN_DURATION / 1000.0);  // degrees per second
-    myServo.setSpeed(speed);
+    // Set start and target angles
+    startAngle = restingAt45 ? 0 : 180;
+    targetAngle = restingAt45 ? 180 : 0;
     
-    // Start movement to new position
-    myServo.setTargetDeg(targetAngle);
+    // Attach and move to start position
+    myServo.attach(SERVO_PIN, 544, 2450);
+    myServo.write(startAngle);
     
-    // Save NEXT resting position to EEPROM (before flip)
+    // Save NEXT resting position to EEPROM
     EEPROM.write(EEPROM_SERVO_REST, restingAt45 ? 0 : 1);
     EEPROM.commit();
     
@@ -601,16 +637,35 @@ void rotateEggs() {
     restingAt45 = !restingAt45;
     
     lastServoTurn = millis();
-    Serial.println("Egg turn started to: " + String(targetAngle));
+    Serial.println("Egg turn started from " + String(startAngle) + " to " + String(targetAngle));
   }
   
-  // Update servoPosition for display
-  if (targetReached) {
-    // At rest - show actual position
-    servoPosition = restingAt45 ? 1 : 2;
-  } else {
-    // Moving - show target position
+  if (turning) {
     servoPosition = restingAt45 ? 2 : 1;
+    unsigned long elapsed = millis() - turnStartTime;
+    
+    if (elapsed >= EGG_TURN_DURATION) {
+      // Turn finished - move to target and detach
+      myServo.write(targetAngle);
+      delay(100);
+      myServo.detach();
+      
+      turning = false;
+      servoPosition = restingAt45 ? 1 : 2;
+      lastServoTurn = millis();
+      Serial.println("Egg turn completed");
+    } else {
+      // Smooth slow movement over 10 seconds using linear interpolation
+      float progress = (float)elapsed / (float)EGG_TURN_DURATION;
+      
+      // Ease in-out quadratic smoothing
+      float easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - pow(-2 * progress + 2, 2) / 2;
+      
+      int currentAngle = startAngle + (targetAngle - startAngle) * easedProgress;
+      myServo.write(currentAngle);
+    }
+  } else {
+    servoPosition = restingAt45 ? 1 : 2;
   }
   
   if (!servoEnabled || servoMode == KILL_OFF) {
