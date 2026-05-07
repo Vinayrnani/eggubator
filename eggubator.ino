@@ -660,8 +660,8 @@ void rotateEggs() {
       // Smooth slow movement over 10 seconds using linear interpolation
       float progress = (float)elapsed / (float)EGG_TURN_DURATION;
       
-      // Ease in-out quadratic smoothing
-      float easedProgress = progress < 0.5 ? 2 * progress * progress : 1 - pow(-2 * progress + 2, 2) / 2;
+      // Cubic ease-in-out: elevator-like - start very slow, fast middle, end very slow
+      float easedProgress = progress < 0.5 ? 4 * progress * progress * progress : 1 - pow(-2 * progress + 2, 3) / 2;
       
       int currentAngle = startAngle + (targetAngle - startAngle) * easedProgress;
       myServo.write(currentAngle);
