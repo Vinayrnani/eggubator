@@ -871,9 +871,13 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         <div class="row">
           <label>Egg Turn Interval</label>
           <select id="eggTurnInterval" onchange="save('eggTurnInterval')">
+            <option value="1800000">30 min</option>
+            <option value="3600000">1 hour</option>
             <option value="7200000" selected>2 hours</option>
             <option value="10800000">3 hours</option>
             <option value="14400000">4 hours</option>
+            <option value="21600000">6 hours</option>
+            <option value="28800000">8 hours</option>
           </select>
         </div>
         <div class="row">
@@ -892,7 +896,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
           </select>
         </div>
         <div class="row">
-          <label>Angle Adjustment (-15 to +15)</label>
+          <label>Angle Adjustment (-40 to +40)</label>
           <input type="number" id="angleAdjustment" min="-40" max="40" onchange="save('angleAdjustment')">
         </div>
         <div class="row">

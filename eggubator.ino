@@ -410,7 +410,8 @@ void handleSettingsApi() {
     if (val >= -40 && val <= 40) {
       angleAdjustment = val;
       // Immediately apply new angle adjustment to current position
-      int currentTarget = restingAt45 ? (0 + angleAdjustment) : (180 - angleAdjustment);
+      // Base: 45 (left) / 135 (right), angleAdjustment expands/reduces range
+      int currentTarget = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
       currentTarget = constrain(currentTarget, 0, 180);
       myServo.attach(SERVO_PIN, 544, 2450);
       myServo.write(currentTarget);
@@ -591,7 +592,8 @@ void autoControl() {
 // ============================================
 
 void servoInit() {
-  int initialAngle = restingAt45 ? (0 - angleAdjustment) : (180 + angleAdjustment);
+  // Base: 45 (left) / 135 (right), angleAdjustment expands/reduces range
+  int initialAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
   initialAngle = constrain(initialAngle, 0, 180);
   
   myServo.attach(SERVO_PIN, 544, 2450);
@@ -621,9 +623,9 @@ void rotateEggs() {
     turning = true;
     turnStartTime = millis();
     
-    // Set start and target angles
-    startAngle = restingAt45 ? 0 : 180;
-    targetAngle = restingAt45 ? 180 : 0;
+    // Set start and target angles based on 45/135 base with angleAdjustment
+    startAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+    targetAngle = restingAt45 ? (135 + angleAdjustment) : (45 - angleAdjustment);
     
     // Attach and move to start position
     myServo.attach(SERVO_PIN, 544, 2450);
