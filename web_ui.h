@@ -897,7 +897,11 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div class="row">
           <label>Angle Adjustment (-40 to +40)</label>
-          <input type="number" id="angleAdjustment" min="-40" max="40" onchange="save('angleAdjustment')">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <button type="button" onclick="adjustAngle(-5)" style="width:36px;padding:8px;">-</button>
+            <input type="number" id="angleAdjustment" min="-40" max="40" step="5" value="0" readonly style="width:60px;text-align:center;" onchange="save('angleAdjustment')">
+            <button type="button" onclick="adjustAngle(5)" style="width:36px;padding:8px;">+</button>
+          </div>
         </div>
         <div class="row">
           <label>Log Heartbeat Interval</label>
@@ -1018,6 +1022,15 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
     function save(key) {
       const val = document.getElementById(key).value;
       fetch(`/settings/api?${key}=${val}`).then(() => fetch('/status'));
+    }
+    
+    function adjustAngle(delta) {
+      const input = document.getElementById('angleAdjustment');
+      let val = parseInt(input.value) + delta;
+      if (val < -40) val = -40;
+      if (val > 40) val = 40;
+      input.value = val;
+      save('angleAdjustment');
     }
     
     function setMock() {
