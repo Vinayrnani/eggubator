@@ -68,7 +68,7 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
 ## IP Configuration
 
 - Connects to WiFi with DHCP first
-- Then sets static IP ending with **`.100`** (e.g., 192.168.1.100)
+- Then sets static IP ending with **`.10`** (e.g., 192.168.1.10)
 - Subnet and gateway auto-detected from DHCP response
 
 ## Web Interface Endpoints

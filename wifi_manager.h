@@ -25,13 +25,30 @@ void connectWiFi() {
   Serial.print("Got IP: ");
   Serial.println(localIP);
   
-  // Set static IP ending in .100
-  localIP[3] = 100;
+  // Set static IP ending in .10
+  localIP[3] = 10;
   WiFi.config(localIP, gatewayIP, subnetIP);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  delay(1000);
   
-  Serial.print("Static IP: ");
+  // Wait to verify connection
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+    delay(500);
+    attempts++;
+  }
+  
+  // If static IP failed, fall back to DHCP
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nStatic IP failed, falling back to DHCP...");
+    WiFi.config(0, 0, 0); // Revert to DHCP
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+  }
+  
+  Serial.print("\nFinal IP: ");
   Serial.println(WiFi.localIP());
 }
 
