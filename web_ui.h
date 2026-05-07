@@ -230,6 +230,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let currentUptimeSec = 0;
     let currentBootId = 0;
     let initialLoadDone = false;
+    let totalLogsLoaded = 0;
 
     const db = new Dexie('EggubatorDB');
     db.version(2).stores({
@@ -671,11 +672,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const d = await r.json();
       
       const progressEl = document.getElementById('loadingProgress');
-      if (progressEl) progressEl.textContent = 'Processing logs...';
+      if (progressEl) progressEl.textContent = 'Loading ' + (totalLogsLoaded + d.sentCount) + ' records...';
       
       const newEntries = decodeLogs(d.logs, d.sentCount);
       if (newEntries.length > 0) {
         await db.logs.bulkPut(newEntries);
+        totalLogsLoaded += newEntries.length;
       }
       if (d.sentCount >= 200) {
         const nextBootId = newEntries.length > 0 ? newEntries[newEntries.length-1].bootId : bootId;

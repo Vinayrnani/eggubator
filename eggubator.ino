@@ -244,7 +244,7 @@ void handleData() {
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
-                ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) +
+                 ",\"totalLogs\":" + String(getTotalLogs()) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
@@ -269,14 +269,12 @@ void handleData() {
     if (count < 1) count = 1;
   }
   
-  uint32_t totalLogs = MAX_LOG_ENTRIES;
-  
   String logHex = "";
   int sentCount = getLogHex(logHex, count, sinceBootId, sinceTimeSec);
   
-  json += ",\"totalLogs\":" + String(MAX_LOG_ENTRIES) +
-          ",\"sentCount\":" + String(sentCount) +
-          ",\"logs\":\"" + logHex + "\"}";
+  json += ",\"totalLogs\":" + String(getTotalLogs()) +
+         ",\"sentCount\":" + String(sentCount) +
+         ",\"logs\":\"" + logHex + "\"}";
   
   server.send(200, "application/json", json);
 }

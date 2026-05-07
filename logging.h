@@ -32,6 +32,17 @@ extern uint16_t currentOffset;
 extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
 
+#define MAX_BOOT_INDEX 32
+
+struct BootIndexEntry {
+  uint8_t bootId;
+  uint16_t sector;
+  uint16_t offset;
+};
+
+extern BootIndexEntry bootIndex[MAX_BOOT_INDEX];
+extern int bootIndexCount;
+
 extern float lastLoggedTemp;
 extern float lastLoggedHum;
 extern uint8_t lastLoggedStates;
@@ -39,6 +50,7 @@ extern uint8_t lastLoggedStates;
 void initLogging(uint8_t bootId);
 bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval = 90000);
 int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32_t sinceTimeSec = 0);
+int getTotalLogs();
 void clearLogs();
 
 #endif

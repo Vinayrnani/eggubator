@@ -1,4 +1,3 @@
-#define FLASH_SECTOR_SIZE FLASH_SECTOR_SIZE_VAL
 #include "logging.h"
 #include <EEPROM.h>
 
@@ -6,8 +5,12 @@ uint8_t currentBootId = 0;
 uint16_t currentSector = 0;
 uint16_t currentOffset = 0;
 uint32_t logsInCurrentBoot = 0;
-
+uint32_t totalLogsCached = 0;
 unsigned long lastLogTime = 0;
+
+BootIndexEntry bootIndex[MAX_BOOT_INDEX];
+int bootIndexCount = 0;
+
 float lastLoggedTemp = -100.0;
 float lastLoggedHum = -100.0;
 uint8_t lastLoggedStates = 0xFF;
@@ -48,6 +51,84 @@ void initLogging(uint8_t bootId) {
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
+
+  // Build boot index: scan backward to find oldest, then forward to record bootId positions
+  bootIndexCount = 0;
+  uint8_t lastBootId = 0xFF;
+
+  // Find oldest position by scanning backward
+  int scanS = currentSector;
+  int scanO = currentOffset - 1;
+  if (scanO < 0) {
+    scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+    scanO = LOGS_PER_SECTOR - 1;
+  }
+
+  int oldestS = currentSector;
+  int oldestO = currentOffset;
+
+  while (true) {
+    ESP.wdtFeed();
+    uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
+    LogEntry entry;
+    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+
+    if (entry.timeSec == 0xFFFFFFFF) {
+      // Found erased flash, oldest is next position
+      oldestS = scanS;
+      oldestO = scanO + 1;
+      if (oldestO >= LOGS_PER_SECTOR) {
+        oldestO = 0;
+        oldestS = (oldestS + 1) % FLASH_NUM_SECTORS;
+      }
+      break;
+    }
+
+    // Move to previous position
+    scanO--;
+    if (scanO < 0) {
+      scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+      scanO = LOGS_PER_SECTOR - 1;
+    }
+
+    // Stop if full circle
+    if (scanS == currentSector && scanO == currentOffset) {
+      oldestS = (currentSector + 1) % FLASH_NUM_SECTORS;
+      oldestO = 0;
+      break;
+    }
+  }
+
+  // Scan forward from oldest to current position, record bootId changes and count logs
+  int s = oldestS;
+  int o = oldestO;
+  totalLogsCached = 0;
+  while (!(s == currentSector && o == currentOffset)) {
+    ESP.wdtFeed();
+    uint32_t addr = FLASH_LOG_START + (s * FLASH_SECTOR_SIZE) + (o * sizeof(LogEntry));
+    LogEntry entry;
+    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+
+    if (entry.timeSec == 0xFFFFFFFF) break;
+
+    totalLogsCached++;
+
+    if (bootIndexCount == 0 || entry.bootId != lastBootId) {
+      if (bootIndexCount < MAX_BOOT_INDEX) {
+        bootIndex[bootIndexCount].bootId = entry.bootId;
+        bootIndex[bootIndexCount].sector = s;
+        bootIndex[bootIndexCount].offset = o;
+        bootIndexCount++;
+      }
+      lastBootId = entry.bootId;
+    }
+
+    o++;
+    if (o >= LOGS_PER_SECTOR) {
+      o = 0;
+      s = (s + 1) % FLASH_NUM_SECTORS;
+    }
+  }
 }
 
 bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval) {
@@ -78,6 +159,16 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   entry.states = states;
   entry.bootId = currentBootId;
 
+  // Add to boot index if this is a new bootId
+  if (bootIndexCount == 0 || currentBootId != bootIndex[bootIndexCount-1].bootId) {
+    if (bootIndexCount < MAX_BOOT_INDEX) {
+      bootIndex[bootIndexCount].bootId = currentBootId;
+      bootIndex[bootIndexCount].sector = currentSector;
+      bootIndex[bootIndexCount].offset = currentOffset;
+      bootIndexCount++;
+    }
+  }
+
   uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
   ESP.flashWrite(writeAddr, (uint32_t*)&entry, sizeof(LogEntry));
 
@@ -88,6 +179,7 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 
   currentOffset++;
   logsInCurrentBoot++;
+  totalLogsCached++;
 
   if (currentOffset >= LOGS_PER_SECTOR) {
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
@@ -101,63 +193,86 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 }
 
 int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTimeSec) {
-  hex.reserve(maxEntries * 16); 
+  hex.reserve(maxEntries * 16);
   int sent = 0;
 
-  int scanSector = currentSector;
-  int scanOffset = currentOffset - 1;
-
-  if (scanOffset < 0) {
-    scanSector = (scanSector - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-    scanOffset = LOGS_PER_SECTOR - 1;
-  }
-
+  // Find starting position using boot index
   int targetSector = -1;
   int targetOffset = -1;
-  int logsScanned = 0;
 
-  // Maximum backward scan to limit HTTP blocking (e.g., 30000 logs ~30 days)
-  int MAX_SCAN = 30000;
-  
-  while (logsScanned < MAX_LOG_ENTRIES && logsScanned < MAX_SCAN) {
-    if (logsScanned % 1000 == 0) ESP.wdtFeed(); // feed watchdog
-
-    uint32_t addr = FLASH_LOG_START + (scanSector * FLASH_SECTOR_SIZE) + (scanOffset * sizeof(LogEntry));
-    LogEntry entry;
-    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
-
-    // Stop scanning if we hit erased flash (the tail of the circular buffer)
-    if (entry.timeSec == 0xFFFFFFFF) break;
-
-    // Check if we hit the exact log requested
-    if (sinceBootId != 0 || sinceTimeSec != 0) {
-      if (entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
-        targetOffset = scanOffset + 1;
-        targetSector = scanSector;
-        if (targetOffset >= LOGS_PER_SECTOR) {
-          targetOffset = 0;
-          targetSector = (scanSector + 1) % FLASH_NUM_SECTORS;
-        }
+  if (sinceBootId == 0 && sinceTimeSec == 0) {
+    // Start from oldest
+    if (bootIndexCount > 0) {
+      targetSector = bootIndex[0].sector;
+      targetOffset = bootIndex[0].offset;
+    }
+  } else {
+    // Find position AFTER (sinceBootId, sinceTimeSec)
+    int bootStartS = -1, bootStartO = -1;
+    for (int i = bootIndexCount - 1; i >= 0; i--) {
+      if (bootIndex[i].bootId == sinceBootId) {
+        bootStartS = bootIndex[i].sector;
+        bootStartO = bootIndex[i].offset;
         break;
       }
     }
 
-    scanOffset--;
-    if (scanOffset < 0) {
-      scanSector = (scanSector - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-      scanOffset = LOGS_PER_SECTOR - 1;
+    if (bootStartS == -1) {
+      // BootId not in index - fall back to scanning backward
+      int scanS = currentSector;
+      int scanO = currentOffset - 1;
+      if (scanO < 0) {
+        scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+        scanO = LOGS_PER_SECTOR - 1;
+      }
+      while (true) {
+        ESP.wdtFeed();
+        uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
+        LogEntry entry;
+        ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+        if (entry.timeSec == 0xFFFFFFFF) break;
+        if (entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
+          // Found it, next position
+          scanO++;
+          if (scanO >= LOGS_PER_SECTOR) { scanO = 0; scanS = (scanS + 1) % FLASH_NUM_SECTORS; }
+          targetSector = scanS;
+          targetOffset = scanO;
+          break;
+        }
+        scanO--;
+        if (scanO < 0) {
+          scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+          scanO = LOGS_PER_SECTOR - 1;
+        }
+        if (scanS == currentSector && scanO == currentOffset) break; // full circle
+      }
+    } else {
+      // Scan forward from boot start to find exact match
+      int s = bootStartS;
+      int o = bootStartO;
+      while (!(s == currentSector && o == currentOffset)) {
+        ESP.wdtFeed();
+        uint32_t addr = FLASH_LOG_START + (s * FLASH_SECTOR_SIZE) + (o * sizeof(LogEntry));
+        LogEntry entry;
+        ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+        if (entry.timeSec == 0xFFFFFFFF) break;
+        if (entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
+          // Found it! Start from next position
+          o++;
+          if (o >= LOGS_PER_SECTOR) { o = 0; s = (s + 1) % FLASH_NUM_SECTORS; }
+          targetSector = s;
+          targetOffset = o;
+          break;
+        }
+        o++;
+        if (o >= LOGS_PER_SECTOR) { o = 0; s = (s + 1) % FLASH_NUM_SECTORS; }
+      }
     }
-    logsScanned++;
   }
 
+  // If target not found, return 0 (prevent infinite loop)
   if (targetSector == -1) {
-    // Exact log not found (or since=0). Return logs from the oldest point we scanned back to.
-    targetSector = scanSector;
-    targetOffset = scanOffset + 1;
-    if (targetOffset >= LOGS_PER_SECTOR) {
-      targetOffset = 0;
-      targetSector = (scanSector + 1) % FLASH_NUM_SECTORS;
-    }
+    return 0;
   }
 
   // Now scan forward from target to collect maxEntries (or up to current position)
@@ -202,4 +317,10 @@ void clearLogs() {
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
+  totalLogsCached = 0;
+  bootIndexCount = 0;
+}
+
+int getTotalLogs() {
+  return totalLogsCached;
 }
