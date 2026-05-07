@@ -58,6 +58,10 @@ unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
 bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
 int8_t angleAdjustment = 0;
+bool adjustingAngle = false;
+unsigned long angleAdjustStartTime = 0;
+int8_t angleAdjustFrom = 0;
+int8_t angleAdjustTo = 0;
 
 Servo myServo;
 
@@ -408,15 +412,13 @@ void handleSettingsApi() {
   } else if (server.hasArg("angleAdjustment")) {
     int8_t val = server.arg("angleAdjustment").toInt();
     if (val >= -40 && val <= 40) {
-      angleAdjustment = val;
-      // Immediately apply new angle adjustment to current position
-      // Base: 45 (left) / 135 (right), angleAdjustment expands/reduces range
-      int currentTarget = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-      currentTarget = constrain(currentTarget, 0, 180);
+      // Start smooth 3-second transition with cubic easing
+      angleAdjustFrom = angleAdjustment;
+      angleAdjustTo = val;
+      angleAdjustStartTime = millis();
+      adjustingAngle = true;
       myServo.attach(SERVO_PIN, 544, 2450);
-      myServo.write(currentTarget);
-      delay(500);
-      myServo.detach();
+      angleAdjustment = val;
       saveSettings();
       server.send(200, "text/plain", "Angle adjustment set to " + String(val));
     } else {
@@ -841,6 +843,35 @@ void loop() {
 
   if (servoEnabled) {
     rotateEggs();
+  }
+
+  // Smooth angle adjustment transition with cubic easing (3 seconds)
+  if (adjustingAngle) {
+    unsigned long elapsed = millis() - angleAdjustStartTime;
+    const unsigned long ANGLE_ADJUST_DURATION = 3000;
+    
+    if (elapsed >= ANGLE_ADJUST_DURATION) {
+      // Transition complete
+      int targetAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
+      targetAngle = constrain(targetAngle, 0, 180);
+      myServo.write(targetAngle);
+      delay(50);
+      myServo.detach();
+      adjustingAngle = false;
+      Serial.println("Angle adjustment transition complete");
+    } else {
+      // Cubic ease-in-out
+      float progress = (float)elapsed / (float)ANGLE_ADJUST_DURATION;
+      float easedProgress = progress < 0.5 ? 4 * progress * progress * progress : 1 - pow(-2 * progress + 2, 3) / 2;
+      
+      // Interpolate angle adjustment value
+      int8_t currentAngleAdj = angleAdjustFrom + (angleAdjustTo - angleAdjustFrom) * easedProgress;
+      
+      // Calculate and apply servo angle
+      int currentServoAngle = restingAt45 ? (45 - currentAngleAdj) : (135 + currentAngleAdj);
+      currentServoAngle = constrain(currentServoAngle, 0, 180);
+      myServo.write(currentServoAngle);
+    }
   }
 
   if (millis() - lastOtaCheck > 3600000) {
