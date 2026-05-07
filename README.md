@@ -66,10 +66,17 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
   - `/recovery/reset` - Exit recovery mode
 
 ## IP Configuration
-
 - Connects to WiFi with DHCP first
-- Then sets static IP ending with **`.10`** (e.g., 192.168.1.10)
+- Then sets static IP ending with **`.100`** (e.g., 192.168.1.100)
 - Subnet and gateway auto-detected from DHCP response
+
+### Connectivity Workflow
+If the device is not reachable, follow this sequence exactly:
+1.  **Attempt mDNS**: Try opening `http://eggubator.local` in your browser.
+2.  **Network Discovery**: If mDNS fails, use network tools (e.g., `ping -c 1 eggubator.local`, or `arp-scan -l`) to find the device.
+3.  **Static IP**: If discovery fails, attempt connection directly via the static IP: `http://192.168.100.10`.
+4.  **Stop & Report**: If none of the above work, the device is unreachable. Inform the user and stop; do not attempt further automated retries.
+
 
 ## Web Interface Endpoints
 

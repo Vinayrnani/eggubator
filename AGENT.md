@@ -32,16 +32,23 @@ cp build_output/eggubator.ino.bin firmware.bin
 cp eggubator.ino config.h *.h firmware.bin /storage/emulated/0/ArduinoDroid/sketchbook/
 ```
 
+## Connectivity Workflow
+If the device is not reachable, follow this sequence exactly:
+1.  **Attempt mDNS**: Try opening `http://eggubator.local` in your browser.
+2.  **Network Discovery**: If mDNS fails, use network tools (e.g., `ping -c 1 eggubator.local`, or `arp-scan -l`) to find the device.
+3.  **Static IP**: If discovery fails, attempt connection directly via the static IP: `http://192.168.100.10`.
+4.  **Stop & Report**: If none of the above work, the device is unreachable. Inform the user and stop; do not attempt further automated retries.
+
 ## Special Commands
 
 | Command | Action |
 |---------|--------|
 | `uuu` | Update chat.log file with prompt and response after every prompt |
 | `PPP` | 1. Increment FIRMWARE_VERSION in updates.h 2. Commit and push to git repository |
-| `ddd` | Deploy the compiled binary via OTA update to ESP device (192.168.100.10) |
+| `ddd` | Deploy the compiled binary via OTA update to ESP device (192.168.100.100) |
 [...]
 # 4. Deploy via OTA (DDD)
-curl -s -F "update=@firmware.bin" http://192.168.100.10/update
+curl -s -F "update=@firmware.bin" http://192.168.100.100/update
 ```
 
 ## Notes

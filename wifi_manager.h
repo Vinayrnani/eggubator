@@ -8,38 +8,33 @@
 #define WIFI_PASSWORD "dishoom1234"
 
 void connectWiFi() {
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
+  Serial.println("\nConnecting to " + String(WIFI_SSID));
   
+  // 1. Initial DHCP connection to discover network info
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   
-  // Get network info
   IPAddress localIP = WiFi.localIP();
   IPAddress gatewayIP = WiFi.gatewayIP();
   IPAddress subnetIP = WiFi.subnetMask();
-  Serial.print("Got IP: ");
-  Serial.println(localIP);
+  Serial.println("\nGot IP (DHCP): " + localIP.toString());
   
-  // Set static IP ending in .10
+  // 2. Configure Static IP (.10)
   localIP[3] = 10;
+  WiFi.disconnect(true); // Disconnect fully
   WiFi.config(localIP, gatewayIP, subnetIP);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
-  // Wait to verify connection
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-    delay(500);
-    attempts++;
-  }
+  // 3. Wait for static connection
+  delay(3000);
   
-  // If static IP failed, fall back to DHCP
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\nStatic IP failed, falling back to DHCP...");
+  // 4. Fallback if static IP failed
+  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() != localIP) {
+    Serial.println("\nStatic IP failed, reverting to DHCP...");
+    WiFi.disconnect(true);
     WiFi.config(0, 0, 0); // Revert to DHCP
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
@@ -48,8 +43,7 @@ void connectWiFi() {
     }
   }
   
-  Serial.print("\nFinal IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nFinal IP: " + WiFi.localIP().toString());
 }
 
 bool isWiFiConnected() {
