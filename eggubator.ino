@@ -65,7 +65,16 @@ int8_t angleAdjustTo = 0;
 
 Servo myServo;
 
-uint32_t elapsedSeconds = 0;
+struct BootTimestamp {
+  uint8_t bootId;
+  uint32_t startUnix;
+  uint32_t duration;
+};
+
+BootTimestamp* bootTable = nullptr;
+int bootTableCount = 0;
+int bootTableCapacity = 0;
+
 uint32_t startTimestamp = 0;
 unsigned long lastEEPROMSaveMillis = 0;
 unsigned long lastElapsedMillis = 0;
@@ -89,7 +98,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 #define EEPROM_SETTINGS_MAGIC 40
 #define EEPROM_BOOT_ID 12
 #define EEPROM_SERVO_REST 13
-#define EEPROM_ELAPSED_ADDR 14
+// EEPROM_ELAPSED_ADDR 14 removed - SAT uses startTimestamp + bootTable
 #define SETTINGS_MAGIC_VAL 0xA8
 
 struct DeviceSettings {
@@ -102,6 +111,27 @@ struct DeviceSettings {
   uint8_t turnDurationSeconds;
   int8_t angleAdjustment;
 };
+
+uint32_t getElapsedSeconds() {
+  uint8_t currentBootId = EEPROM.read(EEPROM_BOOT_ID);
+  uint32_t startUnix = 0;
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == currentBootId) {
+      startUnix = bootTable[i].startUnix;
+      break;
+    }
+  }
+  if (startUnix == 0) return 0; // Not synced yet
+  return startUnix + (millis() / 1000) - startTimestamp;
+}
+
+uint32_t getCurrentDay() {
+  return getElapsedSeconds() / 86400;
+}
+
+bool isLockdown() {
+  return getCurrentDay() >= 18;
+}
 
 void saveSettings() {
   DeviceSettings settings;
@@ -116,8 +146,6 @@ void saveSettings() {
   if (settings.angleAdjustment != angleAdjustment) { settings.angleAdjustment = angleAdjustment; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
-  
-  EEPROM.write(EEPROM_ELAPSED_ADDR, elapsedSeconds);
   
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
@@ -136,7 +164,6 @@ void loadSettings() {
     EGG_TURN_INTERVAL = settings.turnInterval;
     EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
     angleAdjustment = settings.angleAdjustment;
-    elapsedSeconds = EEPROM.read(EEPROM_ELAPSED_ADDR);
     startTimestamp = settings.startTimestamp;
     restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
     
@@ -146,7 +173,7 @@ void loadSettings() {
       PULSE_ON_TIME = 3000;
     }
     
-    uint32_t currentDay = elapsedSeconds / 86400;
+    uint32_t currentDay = getCurrentDay();
     stageLockdown = (currentDay >= 18);
 
     if (stageLockdown) {
@@ -161,9 +188,95 @@ void loadSettings() {
     Serial.println("Settings loaded from EEPROM");
   } else {
     Serial.println("No saved settings found, using defaults");
-    elapsedSeconds = 0;
     startTimestamp = 0;
     saveSettings();
+  }
+}
+
+void addBootEntry(uint8_t bootId, uint32_t startUnix, uint32_t duration = 0) {
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == bootId) {
+      bootTable[i].startUnix = startUnix;
+      if (duration > 0) bootTable[i].duration = duration;
+      return;
+    }
+  }
+
+  if (bootTableCount >= bootTableCapacity) {
+    bootTableCapacity = (bootTableCapacity == 0) ? 8 : bootTableCapacity * 2;
+    bootTable = (BootTimestamp*)realloc(bootTable, bootTableCapacity * sizeof(BootTimestamp));
+  }
+
+  bootTable[bootTableCount].bootId = bootId;
+  bootTable[bootTableCount].startUnix = startUnix;
+  bootTable[bootTableCount].duration = duration;
+  bootTableCount++;
+}
+
+void sortBootTable() {
+  for (int i = 0; i < bootTableCount - 1; i++) {
+    for (int j = i + 1; j < bootTableCount; j++) {
+      if (bootTable[i].bootId > bootTable[j].bootId) {
+        BootTimestamp temp = bootTable[i];
+        bootTable[i] = bootTable[j];
+        bootTable[j] = temp;
+      }
+    }
+  }
+}
+
+void prepareBootTable() {
+  uint32_t lastKnownStartUnix = 0;
+  uint8_t lastKnownBootId = 0;
+  EEPROM.get(EEPROM_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
+  lastKnownBootId = EEPROM.read(EEPROM_LAST_KNOWN_BOOT_ID);
+
+  for (int i = 0; i < bootIndexCount; i++) {
+    uint32_t duration = getBootDuration(i);
+    uint8_t bId = bootIndex[i].bootId;
+    addBootEntry(bId, 0, duration);
+  }
+
+  sortBootTable();
+
+  int anchorIdx = -1;
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == lastKnownBootId) {
+      bootTable[i].startUnix = lastKnownStartUnix;
+      anchorIdx = i;
+      break;
+    }
+  }
+
+  if (anchorIdx != -1) {
+    for (int i = anchorIdx - 1; i >= 0; i--) {
+      bootTable[i].startUnix = bootTable[i+1].startUnix - bootTable[i].duration;
+    }
+    for (int i = anchorIdx + 1; i < bootTableCount; i++) {
+      bootTable[i].startUnix = bootTable[i-1].startUnix + bootTable[i-1].duration;
+    }
+  }
+
+  uint8_t currentBootId = EEPROM.read(EEPROM_BOOT_ID);
+  uint32_t currentStartUnix = 0;
+  if (bootTableCount > 0) {
+    bool found = false;
+    for(int i=0; i<bootTableCount; i++) {
+        if(bootTable[i].bootId == currentBootId) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        currentStartUnix = bootTable[bootTableCount - 1].startUnix + bootTable[bootTableCount - 1].duration;
+    }
+  } else {
+    currentStartUnix = lastKnownStartUnix;
+  }
+  
+  if (currentStartUnix > 0) {
+    addBootEntry(currentBootId, currentStartUnix, 0);
+    sortBootTable();
   }
 }
 
@@ -183,6 +296,8 @@ void handleDexiePage() {
 }
 
 void handleStatus() {
+  uint32_t elapsed = getElapsedSeconds();
+  uint32_t curDay = getCurrentDay();
   unsigned long uptimeSec = millis() / 1000;
   int days = uptimeSec / 86400;
   int hours = (uptimeSec % 86400) / 3600;
@@ -212,10 +327,102 @@ void handleStatus() {
                 ",\"bootId\":" + String(currentBootId) +
                 ",\"currentSector\":" + String(currentSector) +
                 ",\"startTimestamp\":" + String(startTimestamp) +
-                ",\"elapsedSeconds\":" + String(elapsedSeconds) +
-                ",\"currentDay\":" + String(elapsedSeconds / 86400) +
+                ",\"elapsedSeconds\":" + String(elapsed) +
+                ",\"currentDay\":" + String(curDay) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
+  server.send(200, "application/json", json);
+}
+
+void handleGetTimestamps() {
+  uint8_t currentBId = EEPROM.read(EEPROM_BOOT_ID);
+  uint32_t currentStartUnix = 0;
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == currentBId) {
+      currentStartUnix = bootTable[i].startUnix;
+      break;
+    }
+  }
+
+  String json = "{";
+  json += "\"currentBootId\":" + String(currentBId);
+  json += ",\"currentStartUnix\":" + String(currentStartUnix);
+  json += ",\"bootUptimeSec\":" + String(millis() / 1000);
+  json += ",\"bootTable\":[";
+  for (int i = 0; i < bootTableCount; i++) {
+    json += "{\"bootId\":" + String(bootTable[i].bootId);
+    json += ",\"startUnix\":" + String(bootTable[i].startUnix);
+    json += "}";
+    if (i < bootTableCount - 1) json += ",";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
+}
+
+void handlePutTimestamps() {
+  if (server.hasArg("plain") == false) {
+    server.send(400, "text/plain", "Body not found");
+    return;
+  }
+
+  String body = server.arg("plain");
+  
+  int entriesCount = 0;
+  int pos = 0;
+  while ((pos = body.indexOf("{\"bootId\":", pos)) != -1) {
+    pos += 10;
+    int endBootId = body.indexOf(",", pos);
+    uint8_t bId = body.substring(pos, endBootId).toInt();
+    
+    int startUnixPos = body.indexOf("\"startUnix\":", endBootId);
+    startUnixPos += 12;
+    int endStartUnix = body.indexOf("}", startUnixPos);
+    if (endStartUnix == -1) endStartUnix = body.indexOf(",", startUnixPos);
+    if (endStartUnix == -1) break;
+    uint32_t sUnix = body.substring(startUnixPos, endStartUnix).toInt();
+    
+    addBootEntry(bId, sUnix);
+    entriesCount++;
+    pos = endStartUnix;
+  }
+
+  sortBootTable();
+
+  uint8_t currentBId = EEPROM.read(EEPROM_BOOT_ID);
+  uint32_t currentStartUnix = 0;
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == currentBId) {
+      currentStartUnix = bootTable[i].startUnix;
+      break;
+    }
+  }
+
+  bool eepromUpdated = false;
+  int32_t drift = 0;
+  if (currentStartUnix > 0) {
+    uint32_t lastKnownStartUnix;
+    EEPROM.get(EEPROM_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
+    uint8_t lastKnownBootId = EEPROM.read(EEPROM_LAST_KNOWN_BOOT_ID);
+    
+    if (lastKnownBootId == currentBId) {
+        drift = (int32_t)currentStartUnix - (int32_t)lastKnownStartUnix;
+    }
+    
+    if (abs(drift) > 5 || lastKnownBootId != currentBId) {
+      EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, currentBId);
+      EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, currentStartUnix);
+      EEPROM.commit();
+      eepromUpdated = true;
+    }
+  }
+
+  String json = "{\"synced\":true";
+  json += ",\"entriesStored\":" + String(entriesCount);
+  json += ",\"driftCalculated\":" + String(drift);
+  json += ",\"eepromUpdated\":" + String(eepromUpdated ? "true" : "false");
+  json += ",\"currentBootId\":" + String(currentBId);
+  json += ",\"currentStartUnix\":" + String(currentStartUnix);
+  json += "}";
   server.send(200, "application/json", json);
 }
 
@@ -430,8 +637,18 @@ void handleSettingsApi() {
   } else if (server.hasArg("action")) {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
-      startTimestamp = (uint32_t)server.arg("timestamp").toInt();
-      elapsedSeconds = 0;
+      uint32_t browserNow = (uint32_t)server.arg("timestamp").toInt();
+      uint32_t currentUptime = millis() / 1000;
+      uint32_t currentStartUnix = browserNow - currentUptime;
+      
+      startTimestamp = browserNow;
+      uint8_t currentBId = EEPROM.read(EEPROM_BOOT_ID);
+      addBootEntry(currentBId, currentStartUnix, 0);
+      
+      EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, currentBId);
+      EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, currentStartUnix);
+      EEPROM.commit();
+
       restingAt45 = true;
       EEPROM.write(EEPROM_SERVO_REST, 1);  // Save as left (true = 1)
       EEPROM.commit();
@@ -442,25 +659,24 @@ void handleSettingsApi() {
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
+      // syncTime is largely superseded by /timestamps PUT but kept for simple syncs
       uint32_t currentUnix = (uint32_t)server.arg("timestamp").toInt();
-      if (startTimestamp > 0 && currentUnix > startTimestamp) {
-        uint32_t correctElapsed = currentUnix - startTimestamp;
-        // Only update if difference is > 10 minutes to avoid unnecessary EEPROM writes
-        if (abs((long)correctElapsed - (long)elapsedSeconds) > 600) {
-          elapsedSeconds = correctElapsed;
-          saveSettings();
-          server.send(200, "text/plain", "Time synced");
-          return;
-        }
-      }
-      server.send(200, "text/plain", "No sync needed");
+      uint8_t currentBId = EEPROM.read(EEPROM_BOOT_ID);
+      uint32_t currentUptime = millis() / 1000;
+      uint32_t browserCalculatedStartUnix = currentUnix - currentUptime;
+      
+      addBootEntry(currentBId, browserCalculatedStartUnix, 0);
+      
+      EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, currentBId);
+      EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, browserCalculatedStartUnix);
+      EEPROM.commit();
+      
+      server.send(200, "text/plain", "Time synced via simple API");
     } else if (action == "adjustDay" && server.hasArg("dir")) {
       int dir = server.arg("dir").toInt();
       if (dir == 1) {
-        elapsedSeconds += 86400;
         if (startTimestamp >= 86400) startTimestamp -= 86400;
-      } else if (dir == -1 && elapsedSeconds >= 86400) {
-        elapsedSeconds -= 86400;
+      } else if (dir == -1) {
         startTimestamp += 86400;
       }
       saveSettings();
@@ -469,7 +685,8 @@ void handleSettingsApi() {
       server.send(400, "text/plain", "Invalid action");
     }
   } else {
-    uint32_t currentDay = elapsedSeconds / 86400;
+    uint32_t curDay = getCurrentDay();
+    uint32_t elapsed = getElapsedSeconds();
     String json = "{\"enabled\":" + String(useMockSensor ? "true" : "false") + 
                   ",\"autosim\":" + String(autoSimMode ? "true" : "false") +
                   ",\"temp\":" + String(mockTemp) + 
@@ -480,8 +697,8 @@ void handleSettingsApi() {
                   ",\"angleAdjustment\":" + String(angleAdjustment) +
                   ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                   ",\"startTimestamp\":" + String(startTimestamp) +
-                  ",\"elapsedSeconds\":" + String(elapsedSeconds) +
-                  ",\"currentDay\":" + String(currentDay) +
+                  ",\"elapsedSeconds\":" + String(elapsed) +
+                  ",\"currentDay\":" + String(curDay) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
     server.send(200, "application/json", json);
   }
@@ -750,6 +967,7 @@ void setup() {
   EEPROM.commit();
 
   initLogging(bootId);
+  prepareBootTable();
   loadSettings();
   
   servoInit();
@@ -771,6 +989,8 @@ void setup() {
   server.on("/settings", handleSettingsPage);
   server.on("/dexie", handleDexiePage);
   server.on("/status", handleStatus);
+  server.on("/timestamps", HTTP_GET, handleGetTimestamps);
+  server.on("/timestamps", HTTP_PUT, handlePutTimestamps);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/settings/clear", handleClearFlash);
@@ -797,11 +1017,10 @@ void loop() {
   unsigned long currentMillis = millis();
   
   if (currentMillis - lastElapsedMillis >= 1000) {
-    elapsedSeconds++;
     lastElapsedMillis = currentMillis;
     
-    uint32_t currentDay = elapsedSeconds / 86400;
-    bool newStageLockdown = (currentDay >= 18);
+    uint32_t curDay = getCurrentDay();
+    bool newStageLockdown = (curDay >= 18);
     if (newStageLockdown != stageLockdown) {
       stageLockdown = newStageLockdown;
       if (stageLockdown) {
@@ -815,12 +1034,6 @@ void loop() {
       }
       saveSettings();
     }
-  }
-
-  if (currentMillis - lastEEPROMSaveMillis >= 10800000) { // 3 hours
-    EEPROM.write(EEPROM_ELAPSED_ADDR, elapsedSeconds);
-    EEPROM.commit();
-    lastEEPROMSaveMillis = currentMillis;
   }
 
   if (currentMillis - lastReadTime > 2000) {

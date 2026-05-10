@@ -324,3 +324,32 @@ void clearLogs() {
 int getTotalLogs() {
   return totalLogsCached;
 }
+
+uint32_t getBootDuration(int index) {
+  if (index < 0 || index >= bootIndexCount) return 0;
+  
+  int s, o;
+  if (index < bootIndexCount - 1) {
+    // End of this boot is just before the start of the next boot
+    s = bootIndex[index + 1].sector;
+    o = bootIndex[index + 1].offset - 1;
+    if (o < 0) {
+      s = (s - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+      o = LOGS_PER_SECTOR - 1;
+    }
+  } else {
+    // This is the latest boot in the index.
+    s = currentSector;
+    o = currentOffset - 1;
+    if (o < 0) {
+      s = (s - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
+      o = LOGS_PER_SECTOR - 1;
+    }
+  }
+
+  uint32_t addr = FLASH_LOG_START + (s * FLASH_SECTOR_SIZE) + (o * sizeof(LogEntry));
+  LogEntry entry;
+  ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+  if (entry.timeSec == 0xFFFFFFFF) return 0;
+  return entry.timeSec;
+}

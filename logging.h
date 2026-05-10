@@ -18,6 +18,8 @@ struct __attribute__((packed)) LogEntry {
 #define MAX_LOG_ENTRIES (LOGS_PER_SECTOR * FLASH_NUM_SECTORS)
 
 #define EEPROM_CURRENT_SECTOR 32
+#define EEPROM_LAST_KNOWN_BOOT_ID 20
+#define EEPROM_LAST_KNOWN_START_UNIX 21
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
@@ -52,5 +54,6 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32_t sinceTimeSec = 0);
 int getTotalLogs();
 void clearLogs();
+uint32_t getBootDuration(int index);
 
 #endif

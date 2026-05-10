@@ -231,10 +231,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let currentBootId = 0;
     let initialLoadDone = false;
     let totalLogsLoaded = 0;
+    let bootTableMap = new Map();
 
     const db = new Dexie('EggubatorDB');
-    db.version(2).stores({
-      logs: 't, timeSec, bootId, temp, hum, h, a, f, s'
+    db.version(3).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
     });
 
     async function cleanupDB() {
@@ -277,9 +279,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (!hex) return [];
       const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
       const entries = [];
-      const now = Date.now();
-      const bootStartEstimate = now - (currentUptimeSec * 1000);
-      
+
       for (let i = 0; i < logCount; i++) {
         const offset = i * 8;
         if (offset + 8 > bytes.length) break;
@@ -289,13 +289,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const states = bytes[offset+6];
         const bootId = bytes[offset+7];
 
-        let absoluteT;
-        if (bootId === currentBootId) {
-          absoluteT = bootStartEstimate + (timeSec * 1000);
+        const bootEntry = bootTableMap.get(bootId);
+        let absoluteT = 0;
+        if (bootEntry && bootEntry.startUnix > 0) {
+          absoluteT = (bootEntry.startUnix + timeSec) * 1000;
         } else {
-          let diff = (currentBootId - bootId);
-          if (diff < 0) diff += 256;
-          absoluteT = bootStartEstimate - (diff * 86400 * 1000) + (timeSec * 1000);
+          // Fallback if not synced yet (relative to now)
+          const now = Date.now();
+          const bootStartEstimate = now - (currentUptimeSec * 1000);
+          absoluteT = bootStartEstimate + (timeSec * 1000);
         }
 
         entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
@@ -571,6 +573,51 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       analyze(logsAll, 'All');
     }
 
+    async function synchronizeTimestamps() {
+      const progressEl = document.getElementById('loadingProgress');
+      if (progressEl) progressEl.textContent = 'Synchronizing Timestamps...';
+
+      try {
+        const espRes = await fetch('/timestamps');
+        const espData = await espRes.json();
+        
+        const browserNow = Math.floor(Date.now() / 1000);
+        const currentBootStartUnix = browserNow - espData.bootUptimeSec;
+        
+        const dexieBoots = await db.bootTimestamps.toArray();
+        const dexieMap = new Map(dexieBoots.map(b => [b.bootId, b]));
+        
+        const mergedMap = new Map();
+        
+        espData.bootTable.forEach(b => {
+          mergedMap.set(b.bootId, { bootId: b.bootId, startUnix: b.startUnix });
+        });
+        
+        dexieMap.forEach((v, k) => {
+          const espVal = mergedMap.get(k);
+          if (!espVal || v.startUnix > espVal.startUnix) {
+            mergedMap.set(k, v);
+          }
+        });
+        
+        mergedMap.set(espData.currentBootId, { bootId: espData.currentBootId, startUnix: currentBootStartUnix });
+        
+        const reconciledHistory = Array.from(mergedMap.values());
+        
+        await fetch('/timestamps', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reconciledHistory)
+        });
+        
+        await db.bootTimestamps.bulkPut(reconciledHistory);
+        bootTableMap = mergedMap;
+        console.log("SAT Synchronization complete", reconciledHistory);
+      } catch (e) {
+        console.error("SAT Sync failed", e);
+      }
+    }
+
     async function checkAutoReset() {
       const lastLog = await db.logs.orderBy('t').last();
       const unixNow = Math.floor(Date.now() / 1000);
@@ -580,13 +627,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         if (gap > 259200000) { // 3 days in ms
           console.log("Incubator was off for >3 days. Resetting to Day 1.");
           await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-        } else {
-          // Less than 3 days gap. Let's make sure the ESP's time is synced
-          await fetch('/settings/api?action=syncTime&timestamp=' + unixNow);
+          await synchronizeTimestamps();
         }
       } else {
-        // No logs at all, maybe first run?
+        console.log("No logs found. Starting new batch.");
         await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+        await synchronizeTimestamps();
       }
     }
 
@@ -707,9 +753,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     let lastChartUpdate = 0;
+    let satSynced = false;
 
     async function mainLoop() {
       try {
+        if (!satSynced) {
+          await synchronizeTimestamps();
+          satSynced = true;
+        }
         const statusRes = await fetch('/status');
         const statusData = await statusRes.json();
         currentUptimeSec = statusData.uptimeSec;
@@ -921,8 +972,9 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     const db = new Dexie('EggubatorDB');
-    db.version(2).stores({
-      logs: 't, timeSec, bootId, temp, hum, h, a, f, s'
+    db.version(3).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
     });
 
     async function mainLoop() {
@@ -1082,7 +1134,10 @@ const char DEXIE_HTML[] PROGMEM = R"rawliteral(
   </div>
   <script>
     const db = new Dexie('EggubatorDB');
-    db.version(2).stores({ logs: 't, timeSec, bootId, temp, hum, h, a, f, s' });
+    db.version(3).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
+    });
     new IndexedDBDebugBar(db, { position: 'left', isCollapsed: false });
   </script>
 </body>
