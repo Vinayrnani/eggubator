@@ -45,10 +45,10 @@ If the device is not reachable, follow this sequence exactly:
 |---------|--------|
 | `uuu` | Update chat.log file with prompt and response after every prompt |
 | `PPP` | 1. Increment FIRMWARE_VERSION in updates.h 2. Commit and push to git repository |
-| `ddd` | Deploy the compiled binary via OTA update to ESP device (192.168.100.100) |
+| `ddd` | Deploy the compiled binary via OTA update to ESP device |
 [...]
 # 4. Deploy via OTA (DDD)
-curl -s -F "update=@firmware.bin" http://192.168.100.100/update
+./deploy.sh
 ```
 
 ## Notes
