@@ -711,18 +711,7 @@ void handleRecoveryReset() {
 void handleClearFlash() {
   uint16_t startSector = currentSector;
   
-  // Erase from sector 0 up to currentSector
-  for (uint16_t i = 0; i <= currentSector; i++) {
-    ESP.flashEraseSector((FLASH_LOG_START + (i * LOG_SECTOR_SIZE)) / LOG_SECTOR_SIZE);
-    ESP.wdtFeed();
-  }
-  
-  currentSector = 0;
-  currentOffset = 0;
-  logsInCurrentBoot = 0;
-  
-  EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-  EEPROM.commit();
+  clearLogs();
   
   server.send(200, "text/plain", "Flash cleared up to sector " + String(startSector) + ". Pointers reset to 0.");
 }

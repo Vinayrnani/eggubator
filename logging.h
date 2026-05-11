@@ -18,6 +18,7 @@ struct __attribute__((packed)) LogEntry {
 #define MAX_LOG_ENTRIES (LOGS_PER_SECTOR * FLASH_NUM_SECTORS)
 
 #define EEPROM_CURRENT_SECTOR 32
+#define EEPROM_START_SECTOR 34
 
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
@@ -28,6 +29,7 @@ struct __attribute__((packed)) LogEntry {
 
 extern uint8_t currentBootId;
 extern uint16_t currentSector;
+extern uint16_t startSector;
 extern uint16_t currentOffset;
 extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
