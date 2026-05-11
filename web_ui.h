@@ -295,7 +295,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         } else {
           let diff = (currentBootId - bootId);
           if (diff < 0) diff += 256;
-          absoluteT = bootStartEstimate - (diff * 86400 * 1000) + (timeSec * 1000);
+          absoluteT = bootStartEstimate - (diff * 20 * 1000) + (timeSec * 1000);
         }
 
         entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
