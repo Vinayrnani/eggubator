@@ -284,15 +284,23 @@ void prepareBootTable() {
 // ============================================
 // WEB SERVER HANDLERS
 // ============================================
+void sendJSON(int code, String json) {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(code, "application/json", json);
+}
+
 void handleRoot() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
 void handleSettingsPage() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/html; charset=utf-8", SETTINGS_HTML);
 }
 
 void handleDexiePage() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/html; charset=utf-8", DEXIE_HTML);
 }
 
@@ -332,7 +340,7 @@ void handleStatus() {
                 ",\"currentDay\":" + String(curDay) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
-  server.send(200, "application/json", json);
+  sendJSON(200, json);
 }
 
 void handleGetTimestamps() {
@@ -358,10 +366,18 @@ void handleGetTimestamps() {
     if (i < bootTableCount - 1) json += ",";
   }
   json += "]}";
-  server.send(200, "application/json", json);
+  sendJSON(200, json);
 }
 
 void handlePutTimestamps() {
+  if (server.method() == HTTP_OPTIONS) {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "PUT, GET, OPTIONS");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    server.send(204);
+    return;
+  }
+  
   if (server.hasArg("plain") == false) {
     server.send(400, "text/plain", "Body not found");
     return;
@@ -425,7 +441,7 @@ void handlePutTimestamps() {
   json += ",\"currentBootId\":" + String(currentBId);
   json += ",\"currentStartUnix\":" + String(currentStartUnix);
   json += "}";
-  server.send(200, "application/json", json);
+  sendJSON(200, json);
 }
 
 void handleData() {
@@ -484,7 +500,7 @@ void handleData() {
          ",\"sentCount\":" + String(sentCount) +
          ",\"logs\":\"" + logHex + "\"}";
   
-  server.send(200, "application/json", json);
+  sendJSON(200, json);
 }
 
 void handleControl() {
@@ -992,6 +1008,7 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/timestamps", HTTP_GET, handleGetTimestamps);
   server.on("/timestamps", HTTP_PUT, handlePutTimestamps);
+  server.on("/timestamps", HTTP_OPTIONS, handlePutTimestamps);
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/settings/clear", handleClearFlash);
