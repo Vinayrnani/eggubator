@@ -16,6 +16,7 @@
 #include "dht_sensor.h"
 #include "wifi_manager.h"
 #include "logging.h"
+
 #include "updates.h"
 #include "web_ui.h"
 
@@ -228,7 +229,7 @@ void handleData() {
   String uptimeStr = "";
   if (days > 0) uptimeStr += String(days) + "d ";
   uptimeStr += String(hours) + "h " + String(mins) + "m " + String(secs) + "s";
-  
+
   String json = "{\"temperature\":" + String(currentTemp) +
                 ",\"humidity\":" + String(currentHumidity) +
                 ",\"heater\":" + String(heaterState ? 1 : 0) +
@@ -240,17 +241,20 @@ void handleData() {
                 ",\"mock\":" + String(useMockSensor ? 1 : 0) +
                 ",\"autosim\":" + String(autoSimMode ? 1 : 0) +
                 ",\"stageLockdown\":" + String(stageLockdown ? 1 : 0) +
-                ",\"heaterMode\":" + String(heaterMode) +
-                ",\"atomizerMode\":" + String(atomizerMode) +
-                ",\"fanMode\":" + String(fanMode) +
-                ",\"servoMode\":" + String(servoMode) +
-                 ",\"totalLogs\":" + String(getTotalLogs()) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
                 ",\"ip\":\"" + WiFi.localIP().toString() + "\"" +
                 ",\"rssi\":" + String(WiFi.RSSI()) +
-                ",\"millis\":" + String(millis());
+                ",\"uptimeSec\":" + String(uptimeSec) +
+                ",\"bootId\":" + String(currentBootId) +
+                ",\"currentSector\":" + String(currentSector) +
+                ",\"startTimestamp\":" + String(startTimestamp) +
+                ",\"elapsedSeconds\":" + String(elapsedSeconds) +
+                ",\"currentDay\":" + String(elapsedSeconds / 86400) +
+                ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot);
+
+json += ",\"totalLogs\":" + String(getTotalLogs());
 
   // Parse pagination params
   uint8_t sinceBootId = 0;
@@ -272,9 +276,8 @@ void handleData() {
   String logHex = "";
   int sentCount = getLogHex(logHex, count, sinceBootId, sinceTimeSec);
   
-  json += ",\"totalLogs\":" + String(getTotalLogs()) +
-         ",\"sentCount\":" + String(sentCount) +
-         ",\"logs\":\"" + logHex + "\"}";
+  json += ",\"sentCount\":" + String(sentCount) +
+          ",\"logs\":\"" + logHex + "\"}";
   
   server.send(200, "application/json", json);
 }
@@ -711,7 +714,18 @@ void handleRecoveryReset() {
 void handleClearFlash() {
   uint16_t startSector = currentSector;
   
-  clearLogs();
+  // Erase from sector 0 up to currentSector
+  for (uint16_t i = 0; i <= currentSector; i++) {
+    ESP.flashEraseSector((FLASH_LOG_START + (i * LOG_SECTOR_SIZE)) / LOG_SECTOR_SIZE);
+    ESP.wdtFeed();
+  }
+  
+  currentSector = 0;
+  currentOffset = 0;
+  logsInCurrentBoot = 0;
+  
+  EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
+  EEPROM.commit();
   
   server.send(200, "text/plain", "Flash cleared up to sector " + String(startSector) + ". Pointers reset to 0.");
 }

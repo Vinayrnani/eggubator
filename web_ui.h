@@ -233,9 +233,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let totalLogsLoaded = 0;
 
     const db = new Dexie('EggubatorDB');
-    db.version(2).stores({
-      logs: 't, timeSec, bootId, temp, hum, h, a, f, s'
-    });
+    db.version(1).stores({ logs: 't, timeSec, bootId, temp, hum, h, a, f, s' });
+    db.version(2).stores({ logs: 't, timeSec, bootId, temp, hum, h, a, f, s' });
+
+    function decodeLogs(hex, logCount) {
+      if (!hex) return [];
+      const match = hex.match(/.{1,2}/g);
+      if (!match) return [];
+      const bytes = new Uint8Array(match.map(byte => parseInt(byte, 16)));
+      const entries = [];
+      const now = Date.now();
+      const bootStartEstimate = now - (currentUptimeSec * 1000);
+      
+      for (let i = 0; i < logCount; i++) {
+        const offset = i * 8;
+        if (offset + 8 > bytes.length) break;
+        const timeSec = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
+        const temp = bytes[offset+4] / 10 + 20;
+        const hum = bytes[offset+5];
+        const states = bytes[offset+6];
+        const bootId = bytes[offset+7];
+
+        let absoluteT;
+        if (bootId === currentBootId) {
+          absoluteT = bootStartEstimate + (timeSec * 1000);
+        } else {
+          let diff = (currentBootId - bootId);
+          if (diff < 0) diff += 256;
+          absoluteT = bootStartEstimate - (diff * 20 * 1000) + (timeSec * 1000);
+        }
+
+        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
+      }
+      return entries;
+    }
 
     async function cleanupDB() {
       // 1. Hard purge everything older than 30 days
@@ -271,36 +302,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
         console.log(`Cleaned up ${deleteKeys.length} redundant logs older than 48h.`);
       }
-    }
-
-    function decodeLogs(hex, logCount) {
-      if (!hex) return [];
-      const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-      const entries = [];
-      const now = Date.now();
-      const bootStartEstimate = now - (currentUptimeSec * 1000);
-      
-      for (let i = 0; i < logCount; i++) {
-        const offset = i * 8;
-        if (offset + 8 > bytes.length) break;
-        const timeSec = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
-        const temp = bytes[offset+4] / 10 + 20;
-        const hum = bytes[offset+5];
-        const states = bytes[offset+6];
-        const bootId = bytes[offset+7];
-
-        let absoluteT;
-        if (bootId === currentBootId) {
-          absoluteT = bootStartEstimate + (timeSec * 1000);
-        } else {
-          let diff = (currentBootId - bootId);
-          if (diff < 0) diff += 256;
-          absoluteT = bootStartEstimate - (diff * 20 * 1000) + (timeSec * 1000);
-        }
-
-        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
-      }
-      return entries;
     }
 
     function initCharts() {
@@ -477,6 +478,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const logs24h = logsAll.filter(l => l.t >= now - 24 * 3600 * 1000);
 
       function analyze(logs, prefix) {
+        if (!logs || logs.length === 0) return;
         let tUnderTime = 0, tOverTime = 0;
         let hUnderTime = 0, hOverTime = 0;
 
@@ -667,43 +669,64 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
+    function hideOverlay() {
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.style.display = 'none', 300);
+      }
+    }
+
     async function fetchNextBatch(bootId, timeSec) {
-      const r = await fetch('/data?boot=' + bootId + '&time=' + timeSec + '&count=200');
-      const d = await r.json();
-      
+      let d;
+      try {
+        const r = await fetch('/data?boot=' + bootId + '&time=' + timeSec + '&count=200');
+        d = await r.json();
+      } catch(e) {
+        console.error('Fetch data failed:', e);
+        initialLoadDone = true;
+        hideOverlay();
+        return;
+      }
+
+      // Update our boot table cache from server
+      if (d.bootStartUnix) {
+        serverBootStartUnix = d.bootStartUnix;
+        currentBootId = d.bootId;
+        currentUptimeSec = d.uptimeSec;
+      }
+
       const progressEl = document.getElementById('loadingProgress');
       if (progressEl) progressEl.textContent = 'Loading ' + (totalLogsLoaded + d.sentCount) + ' records...';
-      
+
       const newEntries = decodeLogs(d.logs, d.sentCount);
       if (newEntries.length > 0) {
         await db.logs.bulkPut(newEntries);
         totalLogsLoaded += newEntries.length;
       }
-      if (d.sentCount >= 200) {
+      if (d.sentCount >= 200 && totalLogsLoaded < d.totalLogs) {
         const nextBootId = newEntries.length > 0 ? newEntries[newEntries.length-1].bootId : bootId;
         const nextTimeSec = newEntries.length > 0 ? newEntries[newEntries.length-1].timeSec : timeSec;
-        await fetchNextBatch(nextBootId, nextTimeSec);
-      } else {
-        initialLoadDone = true;
-        if (newEntries.length > 0) {
-          latestBootId = newEntries[newEntries.length-1].bootId;
-          latestTimeSec = newEntries[newEntries.length-1].timeSec;
+
+        if (nextBootId === bootId && nextTimeSec === timeSec) {
+          console.warn("Pagination stuck on same boot/time. Stopping.");
+        } else {
+          await fetchNextBatch(nextBootId, nextTimeSec);
+          return;
         }
-        await updateChart();
-        await calculateAverages();
-        await calculateStability();
-        await cleanupDB();
-        
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) {
-              overlay.style.opacity = '0';
-              setTimeout(() => overlay.style.display = 'none', 300);
-            }
-          });
-        });
       }
+
+      // End of pagination
+      initialLoadDone = true;
+      if (newEntries.length > 0) {
+        latestBootId = newEntries[newEntries.length-1].bootId;
+        latestTimeSec = newEntries[newEntries.length-1].timeSec;
+      }
+      await updateChart();
+      await calculateAverages();
+      await calculateStability();
+      await cleanupDB();
+      hideOverlay();
     }
 
     let lastChartUpdate = 0;
@@ -726,17 +749,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             }
             await fetchNextBatch(latestBootId, latestTimeSec);
           } else {
-            const dataRes = await fetch('/data?boot=' + latestBootId + '&time=' + latestTimeSec + '&count=200');
-            const dataData = await dataRes.json();
-            const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
-            if (newEntries.length > 0) {
-              await db.logs.bulkPut(newEntries);
-              latestBootId = newEntries[newEntries.length-1].bootId;
-              latestTimeSec = newEntries[newEntries.length-1].timeSec;
-              await updateChart();
-              await calculateAverages();
-              await calculateStability();
-              await cleanupDB();
+            try {
+              const dataRes = await fetch('/data?boot=' + latestBootId + '&time=' + latestTimeSec + '&count=200');
+              const dataData = await dataRes.json();
+              const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
+              if (newEntries.length > 0) {
+                await db.logs.bulkPut(newEntries);
+                latestBootId = newEntries[newEntries.length-1].bootId;
+                latestTimeSec = newEntries[newEntries.length-1].timeSec;
+                await updateChart();
+                await calculateAverages();
+                await calculateStability();
+                await cleanupDB();
+              }
+            } catch(e) {
+              console.error('Incremental fetch error:', e);
             }
           }
           lastChartUpdate = now;
@@ -759,16 +786,55 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     initCharts();
-    
-    // Set initial refresh rate
+
+// Set initial refresh rate
     refreshRate = 5000;
     const sel = document.getElementById('refreshRate');
     if(sel) sel.value = refreshRate;
-    
-    // Check if we need to auto-reset the batch based on Dexie logs
-    checkAutoReset().then(() => {
-      mainLoop();
-    });
+
+    // Initialize
+    (async () => {
+      try {
+        // Step 0: Fetch status first
+        const statusRes = await fetch('/status');
+        const statusData = await statusRes.json();
+        currentUptimeSec = statusData.uptimeSec;
+        currentBootId = statusData.bootId;
+        updateLiveData(statusData);
+
+        // Step 1b: Purge any remaining invalid entries (t < year 2000)
+        const invalidCount = await db.logs.where('t').below(946684800000).count();
+        if (invalidCount > 0) {
+          await db.logs.where('t').below(946684800000).delete();
+          console.log('Purged', invalidCount, 'invalid entries with bad timestamps');
+        }
+
+        // Step 2: Check if we already have logs in Dexie — skip full pagination if so
+        const existingCount = await db.logs.count();
+        if (existingCount > 0) {
+          initialLoadDone = true;
+          const lastLog = await db.logs.orderBy('t').reverse().limit(1).toArray();
+          if (lastLog.length > 0) {
+            latestBootId = lastLog[0].bootId;
+            latestTimeSec = lastLog[0].timeSec;
+            console.log('Dexie has ' + existingCount + ' logs, skipping full re-fetch. Resuming from bootId=' + latestBootId + ' timeSec=' + latestTimeSec);
+          }
+          hideOverlay();
+        } else {
+          // No logs in Dexie — do full pagination from the start
+          await fetchNextBatch(0, 0);
+        }
+
+        // Step 3: Check if auto-reset needed
+        await checkAutoReset();
+
+        // Step 4: Start main loop
+        mainLoop();
+      } catch(e) {
+        console.error('Init failed:', e);
+        mainLoop();
+      }
+    })();
   </script>
 </body>
 </html>
@@ -899,7 +965,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <select id="logInterval" class="form-select" onchange="save('logInterval')">
         <option value="5000">5 sec</option>
         <option value="10000">10 sec</option>
-        <option value="30000">30 sec</option>
+        <option value="30000">30 sec</name>
         <option value="60000">60 sec</option>
         <option value="90000">90 sec</option>
         <option value="180000">3 min</option>
@@ -1052,7 +1118,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       }
     }
     
-mainLoop();
+    mainLoop();
    </script>
  </body>
  </html>
