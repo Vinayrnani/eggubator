@@ -1,5 +1,6 @@
 // ============================================
 // EGG INCUBATOR CONTROLLER - Modular Version
+// SAT ARCHITECTURE ENABLED
 // ============================================
 
 // Include header files
