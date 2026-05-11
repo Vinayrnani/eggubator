@@ -597,7 +597,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         
         if (espData.bootTable) {
             espData.bootTable.forEach(b => {
-              mergedMap.set(b.bootId, { bootId: b.bootId, startUnix: b.startUnix });
+              mergedMap.set(b.bootId, { bootId: b.bootId, startUnix: b.startUnix, duration: b.duration || 0 });
             });
         }
         
@@ -605,11 +605,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           const espVal = mergedMap.get(k);
           if (!espVal || v.startUnix > espVal.startUnix) {
             mergedMap.set(k, v);
+          } else if (v.duration > (espVal.duration || 0)) {
+            espVal.duration = v.duration;
           }
         });
         
         if (espData.currentBootId !== undefined) {
-            mergedMap.set(espData.currentBootId, { bootId: espData.currentBootId, startUnix: currentBootStartUnix });
+            mergedMap.set(espData.currentBootId, { bootId: espData.currentBootId, startUnix: currentBootStartUnix, duration: espData.bootUptimeSec || 0 });
         }
         
         const reconciledHistory = Array.from(mergedMap.values())
@@ -631,27 +633,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     async function checkAutoReset() {
-      try {
-        const lastLog = await db.logs.orderBy('t').last();
-        const unixNow = Math.floor(Date.now() / 1000);
-        
-        if (lastLog) {
-          const gap = Date.now() - lastLog.t;
-          if (gap > 259200000) { // 3 days in ms
-            console.log("Incubator was off for >3 days. Resetting to Day 1.");
-            await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-            await synchronizeTimestamps();
-            satSynced = true;
-          }
-        } else {
-          console.log("No logs found. Starting new batch.");
-          await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-          await synchronizeTimestamps();
-          satSynced = true;
-        }
-      } catch (e) {
-        console.error("Auto-reset check failed", e);
-      }
+      // Logic moved to mainLoop for better integration with status data
     }
 
     async function updateChart() {
@@ -732,98 +714,166 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     async function fetchAllRecords(bootId, timeSec) {
+      if (initialLoadDone) return;
+      
       let currentB = bootId;
       let currentT = timeSec;
       let hasMore = true;
+      let consecutiveEmpty = 0;
+      let totalFetchedThisSession = 0;
       const progressEl = document.getElementById('loadingProgress');
 
-      while (hasMore) {
-        try {
+      console.log("Starting fetchAllRecords from", bootId, timeSec);
+
+      try {
+        while (hasMore) {
           const r = await fetch(`/data?boot=${currentB}&time=${currentT}&count=200`);
           if (!r.ok) throw new Error(`HTTP error ${r.status}`);
           const d = await r.json();
           
-          if (progressEl) progressEl.textContent = `Loading ${totalLogsLoaded + d.sentCount} records...`;
+          if (progressEl) progressEl.textContent = `Loading ${totalLogsLoaded + totalFetchedThisSession + d.sentCount} records...`;
           
           const newEntries = decodeLogs(d.logs, d.sentCount);
           if (newEntries.length > 0) {
             await db.logs.bulkPut(newEntries);
-            totalLogsLoaded += newEntries.length;
-            currentB = newEntries[newEntries.length - 1].bootId;
-            currentT = newEntries[newEntries.length - 1].timeSec;
+            totalFetchedThisSession += newEntries.length;
             
+            const lastEntry = newEntries[newEntries.length - 1];
+            if (lastEntry.bootId === currentB && lastEntry.timeSec === currentT) {
+              console.warn("No progress made in fetchAllRecords, stopping");
+              hasMore = false;
+            }
+            
+            currentB = lastEntry.bootId;
+            currentT = lastEntry.timeSec;
             latestBootId = currentB;
             latestTimeSec = currentT;
+            consecutiveEmpty = 0;
+          } else {
+            consecutiveEmpty++;
+            if (consecutiveEmpty > 1) hasMore = false;
           }
 
           if (d.sentCount < 200) {
             hasMore = false;
           }
-        } catch (e) {
-          console.error("Fetch batch failed", e);
-          hasMore = false; 
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
-      }
-      
-      initialLoadDone = true;
-      try {
-        await updateChart();
-        await calculateAverages();
-        await calculateStability();
-        await cleanupDB();
       } catch (e) {
-        console.error("Post-load updates failed", e);
+        console.error("fetchAllRecords loop failed", e);
+      } finally {
+        totalLogsLoaded += totalFetchedThisSession;
+        initialLoadDone = true;
+        dismissOverlay();
+        
+        if (totalFetchedThisSession > 0) {
+            await updateChart();
+            await calculateAverages();
+            await calculateStability();
+            await cleanupDB();
+        } else {
+            await updateChart();
+        }
+        console.log("fetchAllRecords completed, fetched:", totalFetchedThisSession);
       }
-      
+    }
+
+    function dismissOverlay() {
       const overlay = document.getElementById('loadingOverlay');
       if (overlay) {
+        overlay.style.transition = 'opacity 0.3s ease';
         overlay.style.opacity = '0';
-        setTimeout(() => overlay.style.display = 'none', 300);
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 300);
       }
     }
 
     let lastChartUpdate = 0;
     let satSynced = false;
+    let isInitialFetching = false;
+    let consecutiveStatusFailures = 0;
 
     async function mainLoop() {
       try {
+        const statusRes = await fetch('/status');
+        if (!statusRes.ok) throw new Error(`Status HTTP error ${statusRes.status}`);
+        const statusData = await statusRes.json();
+        
+        consecutiveStatusFailures = 0;
+        currentUptimeSec = statusData.uptimeSec;
+        currentBootId = statusData.bootId;
+
+        // Handle Batch Change / Reset
+        const localStartTS = parseInt(localStorage.getItem('startTimestamp') || '0');
+        if (statusData.startTimestamp > 0 && statusData.startTimestamp !== localStartTS) {
+            if (localStartTS > 0 && Math.abs(statusData.startTimestamp - localStartTS) > 3600) {
+                console.log("New batch detected, clearing local logs");
+                await db.logs.clear();
+                initialLoadDone = false;
+                latestBootId = 0;
+                latestTimeSec = 0;
+                totalLogsLoaded = 0;
+            }
+            localStorage.setItem('startTimestamp', statusData.startTimestamp);
+        }
+
         if (!satSynced) {
           await synchronizeTimestamps();
           satSynced = true;
         }
-        const statusRes = await fetch('/status');
-        const statusData = await statusRes.json();
-        currentUptimeSec = statusData.uptimeSec;
-        currentBootId = statusData.bootId;
+
         updateLiveData(statusData);
 
         const now = Date.now();
-        if (now - lastChartUpdate >= refreshRate) {
-          if (!initialLoadDone) {
-            const lastLog = await db.logs.orderBy('t').last();
-            if (lastLog) {
-               latestBootId = lastLog.bootId;
-               latestTimeSec = lastLog.timeSec;
+        if (!initialLoadDone) {
+          if (!isInitialFetching) {
+            isInitialFetching = true;
+            try {
+              const lastLog = await db.logs.orderBy('t').last();
+              if (lastLog) {
+                 latestBootId = lastLog.bootId;
+                 latestTimeSec = lastLog.timeSec;
+              }
+              await fetchAllRecords(latestBootId, latestTimeSec);
+            } catch (e) {
+              console.error("Initial fetch trigger failed", e);
+              initialLoadDone = true;
+              dismissOverlay();
+            } finally {
+              isInitialFetching = false;
             }
-            await fetchAllRecords(latestBootId, latestTimeSec);
-          } else {
+          }
+        } else if (now - lastChartUpdate >= refreshRate) {
+          try {
             const dataRes = await fetch(`/data?boot=${latestBootId}&time=${latestTimeSec}&count=200`);
-            const dataData = await dataRes.json();
-            const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
-            if (newEntries.length > 0) {
-              await db.logs.bulkPut(newEntries);
-              latestBootId = newEntries[newEntries.length-1].bootId;
-              latestTimeSec = newEntries[newEntries.length-1].timeSec;
-              await updateChart();
-              await calculateAverages();
-              await calculateStability();
-              await cleanupDB();
+            if (dataRes.ok) {
+                const dataData = await dataRes.json();
+                const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
+                if (newEntries.length > 0) {
+                  await db.logs.bulkPut(newEntries);
+                  const lastEntry = newEntries[newEntries.length-1];
+                  latestBootId = lastEntry.bootId;
+                  latestTimeSec = lastEntry.timeSec;
+                  await updateChart();
+                  await calculateAverages();
+                  await calculateStability();
+                  await cleanupDB();
+                }
             }
+          } catch (e) {
+            console.error("Periodic update failed", e);
           }
           lastChartUpdate = now;
         }
       } catch (e) {
         console.error("Main loop error", e);
+        consecutiveStatusFailures++;
+        if (consecutiveStatusFailures > 5 && !initialLoadDone) {
+            console.warn("Too many status failures, dismissing overlay anyway");
+            dismissOverlay();
+            initialLoadDone = true; 
+        }
       } finally {
         setTimeout(mainLoop, 1000); 
       }

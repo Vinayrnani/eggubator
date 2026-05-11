@@ -353,6 +353,7 @@ void handleGetTimestamps() {
   for (int i = 0; i < bootTableCount; i++) {
     json += "{\"bootId\":" + String(bootTable[i].bootId);
     json += ",\"startUnix\":" + String(bootTable[i].startUnix);
+    json += ",\"duration\":" + String(bootTable[i].duration);
     json += "}";
     if (i < bootTableCount - 1) json += ",";
   }
