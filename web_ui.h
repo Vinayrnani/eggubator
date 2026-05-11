@@ -276,31 +276,36 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function decodeLogs(hex, logCount) {
-      if (!hex) return [];
-      const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      if (!hex || hex.length < 16) return [];
       const entries = [];
+      try {
+        const matches = hex.match(/.{1,2}/g);
+        if (!matches) return [];
+        const bytes = new Uint8Array(matches.map(byte => parseInt(byte, 16)));
 
-      for (let i = 0; i < logCount; i++) {
-        const offset = i * 8;
-        if (offset + 8 > bytes.length) break;
-        const timeSec = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
-        const temp = bytes[offset+4] / 10 + 20;
-        const hum = bytes[offset+5];
-        const states = bytes[offset+6];
-        const bootId = bytes[offset+7];
+        for (let i = 0; i < logCount; i++) {
+          const offset = i * 8;
+          if (offset + 8 > bytes.length) break;
+          const timeSec = bytes[offset] | (bytes[offset+1] << 8) | (bytes[offset+2] << 16) | (bytes[offset+3] << 24);
+          const temp = bytes[offset+4] / 10 + 20;
+          const hum = bytes[offset+5];
+          const states = bytes[offset+6];
+          const bootId = bytes[offset+7];
 
-        const bootEntry = bootTableMap.get(bootId);
-        let absoluteT = 0;
-        if (bootEntry && bootEntry.startUnix > 0) {
-          absoluteT = (bootEntry.startUnix + timeSec) * 1000;
-        } else {
-          // Fallback if not synced yet (relative to now)
-          const now = Date.now();
-          const bootStartEstimate = now - (currentUptimeSec * 1000);
-          absoluteT = bootStartEstimate + (timeSec * 1000);
+          const bootEntry = bootTableMap.get(bootId);
+          let absoluteT = 0;
+          if (bootEntry && bootEntry.startUnix > 0) {
+            absoluteT = (bootEntry.startUnix + timeSec) * 1000;
+          } else {
+            const now = Date.now();
+            const bootStartEstimate = now - (currentUptimeSec * 1000);
+            absoluteT = bootStartEstimate + (timeSec * 1000);
+          }
+
+          entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
         }
-
-        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
+      } catch (e) {
+        console.error("Log decoding failed", e);
       }
       return entries;
     }
@@ -579,19 +584,22 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       try {
         const espRes = await fetch('/timestamps');
+        if (!espRes.ok) throw new Error("Could not fetch timestamps from ESP");
         const espData = await espRes.json();
         
         const browserNow = Math.floor(Date.now() / 1000);
-        const currentBootStartUnix = browserNow - espData.bootUptimeSec;
+        const currentBootStartUnix = browserNow - (espData.bootUptimeSec || 0);
         
         const dexieBoots = await db.bootTimestamps.toArray();
         const dexieMap = new Map(dexieBoots.map(b => [b.bootId, b]));
         
         const mergedMap = new Map();
         
-        espData.bootTable.forEach(b => {
-          mergedMap.set(b.bootId, { bootId: b.bootId, startUnix: b.startUnix });
-        });
+        if (espData.bootTable) {
+            espData.bootTable.forEach(b => {
+              mergedMap.set(b.bootId, { bootId: b.bootId, startUnix: b.startUnix });
+            });
+        }
         
         dexieMap.forEach((v, k) => {
           const espVal = mergedMap.get(k);
@@ -600,9 +608,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           }
         });
         
-        mergedMap.set(espData.currentBootId, { bootId: espData.currentBootId, startUnix: currentBootStartUnix });
+        if (espData.currentBootId !== undefined) {
+            mergedMap.set(espData.currentBootId, { bootId: espData.currentBootId, startUnix: currentBootStartUnix });
+        }
         
-        const reconciledHistory = Array.from(mergedMap.values());
+        const reconciledHistory = Array.from(mergedMap.values())
+            .sort((a,b) => b.bootId - a.bootId)
+            .slice(0, 50);
         
         await fetch('/timestamps', {
           method: 'PUT',
@@ -619,20 +631,26 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     async function checkAutoReset() {
-      const lastLog = await db.logs.orderBy('t').last();
-      const unixNow = Math.floor(Date.now() / 1000);
-      
-      if (lastLog) {
-        const gap = Date.now() - lastLog.t;
-        if (gap > 259200000) { // 3 days in ms
-          console.log("Incubator was off for >3 days. Resetting to Day 1.");
+      try {
+        const lastLog = await db.logs.orderBy('t').last();
+        const unixNow = Math.floor(Date.now() / 1000);
+        
+        if (lastLog) {
+          const gap = Date.now() - lastLog.t;
+          if (gap > 259200000) { // 3 days in ms
+            console.log("Incubator was off for >3 days. Resetting to Day 1.");
+            await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+            await synchronizeTimestamps();
+            satSynced = true;
+          }
+        } else {
+          console.log("No logs found. Starting new batch.");
           await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
           await synchronizeTimestamps();
+          satSynced = true;
         }
-      } else {
-        console.log("No logs found. Starting new batch.");
-        await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-        await synchronizeTimestamps();
+      } catch (e) {
+        console.error("Auto-reset check failed", e);
       }
     }
 
@@ -713,42 +731,54 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    async function fetchNextBatch(bootId, timeSec) {
-      const r = await fetch('/data?boot=' + bootId + '&time=' + timeSec + '&count=200');
-      const d = await r.json();
-      
+    async function fetchAllRecords(bootId, timeSec) {
+      let currentB = bootId;
+      let currentT = timeSec;
+      let hasMore = true;
       const progressEl = document.getElementById('loadingProgress');
-      if (progressEl) progressEl.textContent = 'Loading ' + (totalLogsLoaded + d.sentCount) + ' records...';
-      
-      const newEntries = decodeLogs(d.logs, d.sentCount);
-      if (newEntries.length > 0) {
-        await db.logs.bulkPut(newEntries);
-        totalLogsLoaded += newEntries.length;
-      }
-      if (d.sentCount >= 200) {
-        const nextBootId = newEntries.length > 0 ? newEntries[newEntries.length-1].bootId : bootId;
-        const nextTimeSec = newEntries.length > 0 ? newEntries[newEntries.length-1].timeSec : timeSec;
-        await fetchNextBatch(nextBootId, nextTimeSec);
-      } else {
-        initialLoadDone = true;
-        if (newEntries.length > 0) {
-          latestBootId = newEntries[newEntries.length-1].bootId;
-          latestTimeSec = newEntries[newEntries.length-1].timeSec;
+
+      while (hasMore) {
+        try {
+          const r = await fetch(`/data?boot=${currentB}&time=${currentT}&count=200`);
+          if (!r.ok) throw new Error(`HTTP error ${r.status}`);
+          const d = await r.json();
+          
+          if (progressEl) progressEl.textContent = `Loading ${totalLogsLoaded + d.sentCount} records...`;
+          
+          const newEntries = decodeLogs(d.logs, d.sentCount);
+          if (newEntries.length > 0) {
+            await db.logs.bulkPut(newEntries);
+            totalLogsLoaded += newEntries.length;
+            currentB = newEntries[newEntries.length - 1].bootId;
+            currentT = newEntries[newEntries.length - 1].timeSec;
+            
+            latestBootId = currentB;
+            latestTimeSec = currentT;
+          }
+
+          if (d.sentCount < 200) {
+            hasMore = false;
+          }
+        } catch (e) {
+          console.error("Fetch batch failed", e);
+          hasMore = false; 
         }
+      }
+      
+      initialLoadDone = true;
+      try {
         await updateChart();
         await calculateAverages();
         await calculateStability();
         await cleanupDB();
-        
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) {
-              overlay.style.opacity = '0';
-              setTimeout(() => overlay.style.display = 'none', 300);
-            }
-          });
-        });
+      } catch (e) {
+        console.error("Post-load updates failed", e);
+      }
+      
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.style.display = 'none', 300);
       }
     }
 
@@ -770,14 +800,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const now = Date.now();
         if (now - lastChartUpdate >= refreshRate) {
           if (!initialLoadDone) {
-            const lastLogArr = await db.logs.orderBy('t').reverse().limit(1).toArray();
-            if (lastLogArr.length > 0) {
-               latestBootId = lastLogArr[0].bootId;
-               latestTimeSec = lastLogArr[0].timeSec;
+            const lastLog = await db.logs.orderBy('t').last();
+            if (lastLog) {
+               latestBootId = lastLog.bootId;
+               latestTimeSec = lastLog.timeSec;
             }
-            await fetchNextBatch(latestBootId, latestTimeSec);
+            await fetchAllRecords(latestBootId, latestTimeSec);
           } else {
-            const dataRes = await fetch('/data?boot=' + latestBootId + '&time=' + latestTimeSec + '&count=200');
+            const dataRes = await fetch(`/data?boot=${latestBootId}&time=${latestTimeSec}&count=200`);
             const dataData = await dataRes.json();
             const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
             if (newEntries.length > 0) {
@@ -793,7 +823,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           lastChartUpdate = now;
         }
       } catch (e) {
-        console.error("Fetch error", e);
+        console.error("Main loop error", e);
       } finally {
         setTimeout(mainLoop, 1000); 
       }

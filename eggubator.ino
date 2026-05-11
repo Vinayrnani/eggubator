@@ -452,7 +452,6 @@ void handleData() {
                 ",\"atomizerMode\":" + String(atomizerMode) +
                 ",\"fanMode\":" + String(fanMode) +
                 ",\"servoMode\":" + String(servoMode) +
-                 ",\"totalLogs\":" + String(getTotalLogs()) +
                 ",\"targetTemp\":" + String(TARGET_TEMP) +
                 ",\"targetHum\":" + String(TARGET_HUMIDITY) +
                 ",\"heapFree\":" + String(ESP.getFreeHeap()) +
