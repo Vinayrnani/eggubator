@@ -979,6 +979,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-item"><span>WiFi RSSI</span><span id="rssi">-- dBm</span></div>
       <div class="sys-item"><span>Free RAM</span><span id="heap">-- KB</span></div>
       <div class="sys-item"><span>Current Sector</span><span id="sector">--</span></div>
+      <div class="sys-item"><span>Start Sector</span><span id="startSector">--</span></div>
       <div class="sys-item"><span>Logs Since Boot</span><span id="bootLogs">--</span></div>
       <div class="sys-item"><span>Dexie Records</span><span id="dexieCount">--</span></div>
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
@@ -1097,6 +1098,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('rssi').textContent = d.rssi;
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
         document.getElementById('sector').textContent = d.currentSector;
+        document.getElementById('startSector').textContent = d.startSector;
         document.getElementById('bootLogs').textContent = d.logsInCurrentBoot;
         
         const count = await db.logs.count();

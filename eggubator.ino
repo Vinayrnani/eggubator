@@ -29,6 +29,8 @@ extern float simTemp;
 extern float simHum;
 extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 
+extern uint16_t startSector;
+
 #define KILL_OFF 0
 #define AUTO 1
 
@@ -205,6 +207,7 @@ void handleStatus() {
                 ",\"uptimeSec\":" + String(uptimeSec) +
                 ",\"bootId\":" + String(currentBootId) +
                 ",\"currentSector\":" + String(currentSector) +
+                ",\"startSector\":" + String(startSector) +
                 ",\"startTimestamp\":" + String(startTimestamp) +
                 ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                 ",\"currentDay\":" + String(getCurrentDay()) +
