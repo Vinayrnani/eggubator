@@ -443,11 +443,11 @@ void handleSettingsApi() {
       if (currentUnix > 0) {
         uint32_t bootUptime = getBootUptime();
         uint32_t browserCalculatedStartUnix = currentUnix - bootUptime;
-        for (int i = 0; i < bootTableCount; i++) {
-          if (bootTable[i].bootId == currentBootId) {
-            int32_t drift = abs((int32_t)(browserCalculatedStartUnix - bootTable[i].startUnix));
+        for (int i = 0; i < bootSessionCount; i++) {
+          if (bootSessions[i].bootId == currentBootId) {
+            int32_t drift = abs((int32_t)(browserCalculatedStartUnix - bootSessions[i].startUnix));
             if (drift > 5) {
-              bootTable[i].startUnix = browserCalculatedStartUnix;
+              bootSessions[i].startUnix = browserCalculatedStartUnix;
               EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, browserCalculatedStartUnix);
               EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, currentBootId);
               EEPROM.commit();
