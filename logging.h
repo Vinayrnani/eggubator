@@ -20,6 +20,9 @@ struct __attribute__((packed)) LogEntry {
 #define EEPROM_CURRENT_SECTOR 32
 #define EEPROM_START_SECTOR 34
 
+#define META_SECTOR_POINTER 0xFE
+#define META_CORRECTION     0xFF
+
 #define STATE_HEATER    0x01
 #define STATE_ATOMIZER  0x02
 #define STATE_FAN       0x04

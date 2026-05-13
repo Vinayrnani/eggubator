@@ -17,6 +17,18 @@ float lastLoggedTemp = -100.0;
 float lastLoggedHum = -100.0;
 uint8_t lastLoggedStates = 0xFF;
 
+void writeSectorMeta() {
+  LogEntry entry;
+  entry.hum = META_SECTOR_POINTER;
+  entry.temp = (uint8_t)currentSector;
+  entry.timeSec = startSector;
+  entry.states = 0;
+  entry.bootId = currentBootId;
+
+  uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
+  ESP.flashWrite(writeAddr, (uint32_t*)&entry, sizeof(LogEntry));
+}
+
 void initLogging(uint8_t bootId) {
   currentBootId = bootId;
   logsInCurrentBoot = 0;
@@ -57,6 +69,32 @@ void initLogging(uint8_t bootId) {
     }
   }
 
+  bool foundMeta = false;
+  int scanS = currentSector;
+  int scanO = currentOffset;
+  for (int i = 0; i < 100; i++) {
+    if (scanO == 0) {
+      scanO = LOGS_PER_SECTOR - 1;
+      scanS = (scanS + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
+    } else {
+      scanO--;
+    }
+    uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
+    LogEntry entry;
+    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+if (entry.timeSec != 0xFFFFFFFF && entry.hum == META_SECTOR_POINTER) {
+      currentSector = (uint16_t)entry.temp;
+      startSector = (uint16_t)entry.timeSec;
+      foundMeta = true;
+      break;
+    }
+  }
+
+  if (!foundMeta) {
+    EEPROM.get(EEPROM_CURRENT_SECTOR, currentSector);
+    EEPROM.get(EEPROM_START_SECTOR, startSector);
+  }
+
   lastLogTime = 0;
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
@@ -80,7 +118,7 @@ void initLogging(uint8_t bootId) {
 
     if (entry.timeSec == 0xFFFFFFFF) break;
 
-    if (entry.hum != 0xFF) {
+    if (entry.hum <= 100) {
       totalLogsCached++;
     }
 
@@ -205,6 +243,7 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   totalLogsCached++;
 
   if (currentOffset >= LOGS_PER_SECTOR) {
+    writeSectorMeta();
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
     if (currentSector == startSector) {
       startSector = (startSector + 1) % FLASH_NUM_SECTORS;
@@ -254,7 +293,7 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
         LogEntry entry;
         ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
         if (entry.timeSec == 0xFFFFFFFF) break;
-        if (entry.hum != 0xFF && entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
+        if (entry.hum <= 100 && entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
           // Found it, next position
           scanO++;
           if (scanO >= LOGS_PER_SECTOR) { scanO = 0; scanS = (scanS + 1) % FLASH_NUM_SECTORS; }
@@ -309,7 +348,7 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
     
     if (entry.timeSec != 0xFFFFFFFF) {
-      if (entry.hum != 0xFF) {
+      if (entry.hum <= 100) {
         uint8_t* ptr = (uint8_t*)&entry;
         for (int j = 0; j < 8; j++) {
           if (ptr[j] < 16) hex += "0";
@@ -355,7 +394,7 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
   LogEntry entry;
   entry.timeSec = duration;
   entry.temp = lastLoggedTemp >= 0 ? (uint8_t)((lastLoggedTemp - 20.0) * 10.0 + 0.5) : 0;
-  entry.hum = 0xFF; // Magic marker
+  entry.hum = META_CORRECTION; // Magic marker
   entry.states = lastLoggedStates;
   entry.bootId = bootId;
 
@@ -364,6 +403,7 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
 
   currentOffset++;
   if (currentOffset >= LOGS_PER_SECTOR) {
+    writeSectorMeta();
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
     if (currentSector == startSector) {
       startSector = (startSector + 1) % FLASH_NUM_SECTORS;
@@ -392,7 +432,7 @@ bool getLastServoPosition(bool* out_restingAt45) {
     LogEntry entry;
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
 
-    if (entry.timeSec != 0xFFFFFFFF && entry.hum != 0xFF) {
+    if (entry.timeSec != 0xFFFFFFFF && entry.hum <= 100) {
       uint8_t turner = (entry.states >> 3) & 0x03;
       *out_restingAt45 = (turner == 2);
       return true;
