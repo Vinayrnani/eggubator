@@ -375,3 +375,36 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
     currentOffset = 0;
   }
 }
+
+bool getLastServoPosition(bool* out_restingAt45) {
+  int s = currentSector;
+  int o = currentOffset;
+
+  if (o == 0) {
+    o = LOGS_PER_SECTOR - 1;
+    s = (s + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
+  } else {
+    o--;
+  }
+
+  for (int scanned = 0; scanned < 100; scanned++) {
+    uint32_t addr = FLASH_LOG_START + (s * FLASH_SECTOR_SIZE) + (o * sizeof(LogEntry));
+    LogEntry entry;
+    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+
+    if (entry.timeSec != 0xFFFFFFFF && entry.hum != 0xFF) {
+      uint8_t turner = (entry.states >> 3) & 0x03;
+      *out_restingAt45 = (turner == 2);
+      return true;
+    }
+
+    if (o == 0) {
+      o = LOGS_PER_SECTOR - 1;
+      s = (s + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
+    } else {
+      o--;
+    }
+  }
+
+  return false;
+}

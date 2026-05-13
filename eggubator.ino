@@ -86,7 +86,6 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
-#define EEPROM_SERVO_REST 13
 #define SETTINGS_MAGIC_VAL 0xA8
 
 struct DeviceSettings {
@@ -136,7 +135,6 @@ void loadSettings() {
     EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
     angleAdjustment = settings.angleAdjustment;
     startTimestamp = settings.startTimestamp;
-    restingAt45 = EEPROM.read(EEPROM_SERVO_REST) != 0;
     
     if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
       PULSE_ON_TIME = settings.pulseOnTime;
@@ -430,8 +428,6 @@ void handleSettingsApi() {
     if (action == "newBatch" && server.hasArg("timestamp")) {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
       restingAt45 = true;
-      EEPROM.write(EEPROM_SERVO_REST, 1);  // Save as left (true = 1)
-      EEPROM.commit();
       myServo.attach(SERVO_PIN, 544, 2450);
       myServo.write(90);
       delay(500);
@@ -634,11 +630,6 @@ void rotateEggs() {
     myServo.attach(SERVO_PIN, 544, 2450);
     myServo.write(startAngle);
     
-    // Save NEXT resting position to EEPROM
-    EEPROM.write(EEPROM_SERVO_REST, restingAt45 ? 0 : 1);
-    EEPROM.commit();
-    
-    // Flip restingAt45 for next turn
     restingAt45 = !restingAt45;
     
     lastServoTurn = millis();
@@ -791,7 +782,13 @@ void setup() {
   initLogging(bootId);
   prepareBootTable();
   loadSettings();
-  
+
+  bool recovered = false;
+  if (getLastServoPosition(&restingAt45)) {
+    recovered = true;
+    Serial.println("Servo position recovered from last log");
+  }
+
   servoInit();
 }
 
