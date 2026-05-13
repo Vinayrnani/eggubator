@@ -33,15 +33,17 @@ extern uint16_t currentOffset;
 extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
 
-struct BootIndexEntry {
+struct BootSession {
   uint8_t bootId;
   uint16_t sector;
   uint16_t offset;
+  uint32_t duration;
+  uint32_t startUnix;
 };
 
-extern BootIndexEntry* bootIndex;
-extern int bootIndexCount;
-extern int bootIndexCapacity;
+extern BootSession* bootSessions;
+extern int bootSessionCount;
+extern int bootSessionCapacity;
 
 extern float lastLoggedTemp;
 extern float lastLoggedHum;
@@ -52,5 +54,6 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32_t sinceTimeSec = 0);
 int getTotalLogs();
 void clearLogs();
+void writeCorrectionLog(uint8_t bootId, uint32_t duration);
 
 #endif

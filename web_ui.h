@@ -649,7 +649,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       if (progressEl) progressEl.textContent = 'SAT sync: pushing to ESP...';
       try {
-        const putBody = JSON.stringify(mergedTimeline.map(t => ({ bootId: t.bootId, startUnix: t.startUnix })));
+        const putBody = JSON.stringify(mergedTimeline.map(t => ({ bootId: t.bootId, startUnix: t.startUnix, duration: t.duration || 0 })));
         const putResp = await fetch('/timestamps', { method: 'PUT', body: putBody });
         const putResult = await putResp.json();
         console.log('PUT /timestamps result:', putResult);

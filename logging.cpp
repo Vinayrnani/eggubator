@@ -9,9 +9,9 @@ uint32_t logsInCurrentBoot = 0;
 uint32_t totalLogsCached = 0;
 unsigned long lastLogTime = 0;
 
-BootIndexEntry* bootIndex = nullptr;
-int bootIndexCount = 0;
-int bootIndexCapacity = 0;
+BootSession* bootSessions = nullptr;
+int bootSessionCount = 0;
+int bootSessionCapacity = 0;
 
 float lastLoggedTemp = -100.0;
 float lastLoggedHum = -100.0;
@@ -63,11 +63,10 @@ void initLogging(uint8_t bootId) {
   lastLoggedStates = 0xFF;
 
   // Build boot index dynamically
-  bootIndexCount = 0;
-  bootIndexCapacity = 16;
-  if (bootIndex != nullptr) free(bootIndex);
-  bootIndex = (BootIndexEntry*)malloc(bootIndexCapacity * sizeof(BootIndexEntry));
-  uint8_t lastBootId = 0xFF;
+  bootSessionCount = 0;
+  bootSessionCapacity = 16;
+  if (bootSessions != nullptr) free(bootSessions);
+  bootSessions = (BootSession*)malloc(bootSessionCapacity * sizeof(BootSession));
 
   // Scan forward from oldest to current position, record bootId changes and count logs
   int s = startSector;
@@ -81,18 +80,34 @@ void initLogging(uint8_t bootId) {
 
     if (entry.timeSec == 0xFFFFFFFF) break;
 
-    totalLogsCached++;
+    if (entry.hum != 0xFF) {
+      totalLogsCached++;
+    }
 
-    if (bootIndexCount == 0 || entry.bootId != lastBootId) {
-      if (bootIndexCount >= bootIndexCapacity) {
-        bootIndexCapacity *= 2;
-        bootIndex = (BootIndexEntry*)realloc(bootIndex, bootIndexCapacity * sizeof(BootIndexEntry));
+    int foundIdx = -1;
+    for (int i = 0; i < bootSessionCount; i++) {
+      if (bootSessions[i].bootId == entry.bootId) {
+        foundIdx = i;
+        break;
       }
-      bootIndex[bootIndexCount].bootId = entry.bootId;
-      bootIndex[bootIndexCount].sector = s;
-      bootIndex[bootIndexCount].offset = o;
-      bootIndexCount++;
-      lastBootId = entry.bootId;
+    }
+
+    if (foundIdx == -1) {
+      if (bootSessionCount >= bootSessionCapacity) {
+        bootSessionCapacity *= 2;
+        bootSessions = (BootSession*)realloc(bootSessions, bootSessionCapacity * sizeof(BootSession));
+      }
+      bootSessions[bootSessionCount].bootId = entry.bootId;
+      bootSessions[bootSessionCount].sector = s;
+      bootSessions[bootSessionCount].offset = o;
+      bootSessions[bootSessionCount].duration = entry.timeSec;
+      bootSessions[bootSessionCount].startUnix = 0;
+      foundIdx = bootSessionCount;
+      bootSessionCount++;
+    } else {
+      if (entry.timeSec > bootSessions[foundIdx].duration) {
+        bootSessions[foundIdx].duration = entry.timeSec;
+      }
     }
 
     o++;
@@ -100,6 +115,27 @@ void initLogging(uint8_t bootId) {
       o = 0;
       s = (s + 1) % FLASH_NUM_SECTORS;
     }
+  }
+
+  // Ensure current boot exists
+  int curIdx = -1;
+  for (int i = 0; i < bootSessionCount; i++) {
+    if (bootSessions[i].bootId == currentBootId) {
+      curIdx = i;
+      break;
+    }
+  }
+  if (curIdx == -1) {
+    if (bootSessionCount >= bootSessionCapacity) {
+      bootSessionCapacity = bootSessionCapacity == 0 ? 16 : bootSessionCapacity * 2;
+      bootSessions = (BootSession*)realloc(bootSessions, bootSessionCapacity * sizeof(BootSession));
+    }
+    bootSessions[bootSessionCount].bootId = currentBootId;
+    bootSessions[bootSessionCount].sector = currentSector;
+    bootSessions[bootSessionCount].offset = currentOffset;
+    bootSessions[bootSessionCount].duration = 0;
+    bootSessions[bootSessionCount].startUnix = 0;
+    bootSessionCount++;
   }
 }
 
@@ -131,16 +167,29 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   entry.states = states;
   entry.bootId = currentBootId;
 
-  // Add to boot index if this is a new bootId
-  if (bootIndexCount == 0 || currentBootId != bootIndex[bootIndexCount-1].bootId) {
-    if (bootIndexCount >= bootIndexCapacity) {
-      bootIndexCapacity = bootIndexCapacity == 0 ? 16 : bootIndexCapacity * 2;
-      bootIndex = (BootIndexEntry*)realloc(bootIndex, bootIndexCapacity * sizeof(BootIndexEntry));
+  // Update current boot session's duration
+  int curIdx = -1;
+  for (int i = 0; i < bootSessionCount; i++) {
+    if (bootSessions[i].bootId == currentBootId) {
+      curIdx = i;
+      break;
     }
-    bootIndex[bootIndexCount].bootId = currentBootId;
-    bootIndex[bootIndexCount].sector = currentSector;
-    bootIndex[bootIndexCount].offset = currentOffset;
-    bootIndexCount++;
+  }
+  if (curIdx == -1) {
+    if (bootSessionCount >= bootSessionCapacity) {
+      bootSessionCapacity = bootSessionCapacity == 0 ? 16 : bootSessionCapacity * 2;
+      bootSessions = (BootSession*)realloc(bootSessions, bootSessionCapacity * sizeof(BootSession));
+    }
+    bootSessions[bootSessionCount].bootId = currentBootId;
+    bootSessions[bootSessionCount].sector = currentSector;
+    bootSessions[bootSessionCount].offset = currentOffset;
+    bootSessions[bootSessionCount].duration = entry.timeSec;
+    bootSessions[bootSessionCount].startUnix = 0;
+    bootSessionCount++;
+  } else {
+    if (entry.timeSec > bootSessions[curIdx].duration) {
+      bootSessions[curIdx].duration = entry.timeSec;
+    }
   }
 
   uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
@@ -180,17 +229,17 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
 
   if (sinceBootId == 0 && sinceTimeSec == 0) {
     // Start from oldest
-    if (bootIndexCount > 0) {
-      targetSector = bootIndex[0].sector;
-      targetOffset = bootIndex[0].offset;
+    if (bootSessionCount > 0) {
+      targetSector = bootSessions[0].sector;
+      targetOffset = bootSessions[0].offset;
     }
   } else {
     // Find position AFTER (sinceBootId, sinceTimeSec)
     int bootStartS = -1, bootStartO = -1;
-    for (int i = bootIndexCount - 1; i >= 0; i--) {
-      if (bootIndex[i].bootId == sinceBootId) {
-        bootStartS = bootIndex[i].sector;
-        bootStartO = bootIndex[i].offset;
+    for (int i = bootSessionCount - 1; i >= 0; i--) {
+      if (bootSessions[i].bootId == sinceBootId) {
+        bootStartS = bootSessions[i].sector;
+        bootStartO = bootSessions[i].offset;
         break;
       }
     }
@@ -205,7 +254,7 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
         LogEntry entry;
         ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
         if (entry.timeSec == 0xFFFFFFFF) break;
-        if (entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
+        if (entry.hum != 0xFF && entry.bootId == sinceBootId && entry.timeSec == sinceTimeSec) {
           // Found it, next position
           scanO++;
           if (scanO >= LOGS_PER_SECTOR) { scanO = 0; scanS = (scanS + 1) % FLASH_NUM_SECTORS; }
@@ -260,12 +309,14 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
     
     if (entry.timeSec != 0xFFFFFFFF) {
-      uint8_t* ptr = (uint8_t*)&entry;
-      for (int j = 0; j < 8; j++) {
-        if (ptr[j] < 16) hex += "0";
-        hex += String(ptr[j], HEX);
+      if (entry.hum != 0xFF) {
+        uint8_t* ptr = (uint8_t*)&entry;
+        for (int j = 0; j < 8; j++) {
+          if (ptr[j] < 16) hex += "0";
+          hex += String(ptr[j], HEX);
+        }
+        sent++;
       }
-      sent++;
     } else {
       // Reached empty flash, means buffer wasn't wrapped and we hit the end
       break;
@@ -293,9 +344,34 @@ void clearLogs() {
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
   totalLogsCached = 0;
-  bootIndexCount = 0;
+  bootSessionCount = 0;
 }
 
 int getTotalLogs() {
   return totalLogsCached;
+}
+
+void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
+  LogEntry entry;
+  entry.timeSec = duration;
+  entry.temp = lastLoggedTemp >= 0 ? (uint8_t)((lastLoggedTemp - 20.0) * 10.0 + 0.5) : 0;
+  entry.hum = 0xFF; // Magic marker
+  entry.states = lastLoggedStates;
+  entry.bootId = bootId;
+
+  uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
+  ESP.flashWrite(writeAddr, (uint32_t*)&entry, sizeof(LogEntry));
+
+  currentOffset++;
+  if (currentOffset >= LOGS_PER_SECTOR) {
+    currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    if (currentSector == startSector) {
+      startSector = (startSector + 1) % FLASH_NUM_SECTORS;
+      EEPROM.put(EEPROM_START_SECTOR, startSector);
+    }
+    EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
+    EEPROM.commit();
+    ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    currentOffset = 0;
+  }
 }

@@ -1,102 +1,41 @@
 #include "sat_manager.h"
 #include <EEPROM.h>
 
-BootTimestamp* bootTable = NULL;
-int bootTableCount = 0;
-
-uint32_t scanBootDuration(int bootIdx) {
-  int s = bootIndex[bootIdx].sector;
-  int o = bootIndex[bootIdx].offset;
-  uint32_t lastTimeSec = 0;
-
-  int endS, endO;
-  if (bootIdx + 1 < bootIndexCount) {
-    endS = bootIndex[bootIdx + 1].sector;
-    endO = bootIndex[bootIdx + 1].offset;
-  } else {
-    endS = currentSector;
-    endO = currentOffset;
-  }
-
-  int limit = 0;
-  while (!(s == endS && o == endO) && limit < 2000) {
-    limit++;
-    uint32_t addr = FLASH_LOG_START + (s * LOG_SECTOR_SIZE) + (o * sizeof(LogEntry));
-    LogEntry entry;
-    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
-    if (entry.timeSec != 0xFFFFFFFF) {
-      lastTimeSec = entry.timeSec;
-    }
-    o++;
-    if (o >= LOGS_PER_SECTOR) { o = 0; s = (s + 1) % FLASH_NUM_SECTORS; }
-  }
-  return lastTimeSec;
-}
-
-void sortBootTable() {
-  for (int i = 0; i < bootTableCount - 1; i++) {
-    for (int j = 0; j < bootTableCount - i - 1; j++) {
-      if (bootTable[j].bootId > bootTable[j + 1].bootId) {
-        BootTimestamp t = bootTable[j];
-        bootTable[j] = bootTable[j + 1];
-        bootTable[j + 1] = t;
-      }
-    }
-  }
-}
-
 void prepareBootTable() {
-  if (bootTable) { free(bootTable); bootTable = NULL; bootTableCount = 0; }
-
-  int allocSize = bootIndexCount + 1;
-  if (allocSize < 1) allocSize = 1;
-  bootTable = (BootTimestamp*)malloc(allocSize * sizeof(BootTimestamp));
-  if (!bootTable) { Serial.println("FATAL: bootTable OOM"); return; }
-  bootTableCount = 0;
-
-  for (int i = 0; i < bootIndexCount && i < allocSize; i++) {
-    bootTable[bootTableCount].bootId = bootIndex[i].bootId;
-    bootTable[bootTableCount].duration = scanBootDuration(i);
-    bootTable[bootTableCount].startUnix = 0;
-    bootTableCount++;
-  }
-  sortBootTable();
-
   uint32_t lastKnownStartUnix = 0;
   uint8_t lastKnownBootId = EEPROM.read(EEPROM_LAST_KNOWN_BOOT_ID);
   EEPROM.get(EEPROM_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
   if (lastKnownStartUnix > 2000000000) lastKnownStartUnix = 0;
 
   int anchorIdx = -1;
-  for (int i = 0; i < bootTableCount; i++) {
-    if (bootTable[i].bootId == lastKnownBootId) {
-      bootTable[i].startUnix = lastKnownStartUnix;
-      anchorIdx = i; break;
+  for (int i = 0; i < bootSessionCount; i++) {
+    bootSessions[i].startUnix = 0;
+    if (bootSessions[i].bootId == lastKnownBootId) {
+      bootSessions[i].startUnix = lastKnownStartUnix;
+      anchorIdx = i;
     }
   }
+
   if (anchorIdx >= 0) {
     for (int i = anchorIdx - 1; i >= 0; i--)
-      bootTable[i].startUnix = bootTable[i + 1].startUnix - bootTable[i].duration;
-    for (int i = anchorIdx + 1; i < bootTableCount; i++)
-      bootTable[i].startUnix = bootTable[i - 1].startUnix + bootTable[i - 1].duration;
+      bootSessions[i].startUnix = bootSessions[i + 1].startUnix - bootSessions[i].duration;
+    for (int i = anchorIdx + 1; i < bootSessionCount; i++)
+      bootSessions[i].startUnix = bootSessions[i - 1].startUnix + bootSessions[i - 1].duration;
   }
 
   uint8_t curBootId = EEPROM.read(EEPROM_BOOT_ID);
   uint32_t curStart = 0;
-  if (bootTableCount > 0)
-    curStart = bootTable[bootTableCount - 1].startUnix + bootTable[bootTableCount - 1].duration;
+  if (bootSessionCount > 0)
+    curStart = bootSessions[bootSessionCount - 1].startUnix + bootSessions[bootSessionCount - 1].duration;
   else if (lastKnownStartUnix > 0)
     curStart = lastKnownStartUnix;
 
   // Ensure current session exists correctly
-  if (bootTableCount == 0 || bootTable[bootTableCount - 1].bootId != curBootId) {
-    bootTable[bootTableCount].bootId = curBootId;
-    bootTable[bootTableCount].startUnix = curStart;
-    bootTable[bootTableCount].duration = 0;
-    bootTableCount++;
+  if (bootSessionCount > 0 && bootSessions[bootSessionCount - 1].bootId == curBootId) {
+    bootSessions[bootSessionCount - 1].startUnix = curStart;
   }
 
-  Serial.println("SAT boot table OK (" + String(bootTableCount) + " entries)");
+  Serial.println("SAT boot table OK (" + String(bootSessionCount) + " entries)");
 }
 
 uint32_t getBootUptime() {
@@ -104,8 +43,8 @@ uint32_t getBootUptime() {
 }
 
 uint32_t getElapsedSeconds() {
-  if (bootTable == NULL || bootTableCount == 0) return 0;
-  uint32_t currentStartUnix = bootTable[bootTableCount - 1].startUnix;
+  if (bootSessions == NULL || bootSessionCount == 0) return 0;
+  uint32_t currentStartUnix = bootSessions[bootSessionCount - 1].startUnix;
   if (currentStartUnix == 0 || startTimestamp == 0 || currentStartUnix < startTimestamp) {
     return getBootUptime();
   }
@@ -121,10 +60,10 @@ void handleTimestamps() {
     String json = "{\"currentBootId\":" + String(currentBootId) +
                   ",\"bootUptimeSec\":" + String(getBootUptime()) +
                   ",\"bootTable\":[";
-    for (int i = 0; i < bootTableCount; i++) {
+    for (int i = 0; i < bootSessionCount; i++) {
       if (i > 0) json += ",";
-      json += "{\"bootId\":" + String(bootTable[i].bootId) +
-              ",\"startUnix\":" + String(bootTable[i].startUnix) + "}";
+      json += "{\"bootId\":" + String(bootSessions[i].bootId) +
+              ",\"startUnix\":" + String(bootSessions[i].startUnix) + "}";
     }
     json += "]}";
     server.send(200, "application/json", json);
@@ -146,19 +85,15 @@ void handleTimestamps() {
       pos = idx + 8;
     }
     if (count == 0) { server.send(400, "application/json", "{\"synced\":false}"); return; }
-
-    int tempCount = count;
-    BootTimestamp* tempTable = (BootTimestamp*)malloc(tempCount * sizeof(BootTimestamp));
-    if (!tempTable) { server.send(500, "application/json", "{\"synced\":false}"); return; }
     
-    int tempTableCount = 0;
     pos = 0;
-
     uint32_t prevStartUnix = 0;
     uint8_t prevBootId = 0;
+    
     for (int i = 0; i < count; i++) {
       int bidx = body.indexOf("\"bootId\"", pos);
       int suidx = body.indexOf("\"startUnix\"", pos);
+      int didx = body.indexOf("\"duration\"", pos);
       if (bidx == -1 || suidx == -1) break;
 
       int bstart = body.indexOf(':', bidx + 8) + 1;
@@ -171,32 +106,43 @@ void handleTimestamps() {
       if (suend == -1) suend = body.indexOf('}', sustart);
       uint32_t startUnix = (uint32_t)body.substring(sustart, suend).toInt();
 
+      uint32_t browserDuration = 0;
+      if (didx != -1 && didx < body.indexOf('}', bidx)) {
+        int dstart = body.indexOf(':', didx + 10) + 1;
+        int dend = body.indexOf(',', dstart);
+        if (dend == -1) dend = body.indexOf('}', dstart);
+        browserDuration = (uint32_t)body.substring(dstart, dend).toInt();
+      }
+
       if (bootId == currentBootId) prevStartUnix = startUnix;
       if (bootId == currentBootId) prevBootId = bootId;
 
-      tempTable[tempTableCount].bootId = bootId;
-      tempTable[tempTableCount].startUnix = startUnix;
-      
-      uint32_t duration = 0;
-      if (bootTable != NULL) {
-        for (int j = 0; j < bootTableCount; j++) {
-          if (bootTable[j].bootId == bootId) {
-            duration = bootTable[j].duration;
-            break;
+      int foundIdx = -1;
+      for (int j = 0; j < bootSessionCount; j++) {
+        if (bootSessions[j].bootId == bootId) {
+          foundIdx = j;
+          break;
+        }
+      }
+
+      if (foundIdx != -1) {
+        bootSessions[foundIdx].startUnix = startUnix;
+        if (browserDuration > 0 && browserDuration > bootSessions[foundIdx].duration) {
+          int32_t durationDrift = abs((int32_t)browserDuration - (int32_t)bootSessions[foundIdx].duration);
+          if (durationDrift > 5) {
+            writeCorrectionLog(bootId, browserDuration);
+            bootSessions[foundIdx].duration = browserDuration;
           }
         }
       }
-      tempTable[tempTableCount].duration = duration;
-      
-      tempTableCount++;
       pos = body.indexOf('}', bidx) + 1;
     }
 
     // Update EEPROM anchor only if drift > 5s on current boot
     if (prevStartUnix > 0 && prevBootId == currentBootId) {
       uint32_t espBootStart = 0;
-      for (int i = 0; i < bootTableCount; i++) {
-        if (bootTable[i].bootId == currentBootId) { espBootStart = bootTable[i].startUnix; break; }
+      for (int i = 0; i < bootSessionCount; i++) {
+        if (bootSessions[i].bootId == currentBootId) { espBootStart = bootSessions[i].startUnix; break; }
       }
       int32_t drift = abs((int32_t)(prevStartUnix - espBootStart));
       if (drift > 5) {
@@ -206,12 +152,8 @@ void handleTimestamps() {
       }
     }
 
-    if (bootTable) { free(bootTable); }
-    bootTable = tempTable;
-    bootTableCount = tempTableCount;
-
     server.send(200, "application/json",
-      "{\"synced\":true,\"entriesStored\":" + String(bootTableCount) + "}");
+      "{\"synced\":true,\"entriesStored\":" + String(bootSessionCount) + "}");
     return;
   }
 
