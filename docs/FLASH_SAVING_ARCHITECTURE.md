@@ -32,7 +32,13 @@ if (currentSector == startSector) {
 ### Clearing Logs (New "Batch")
 The `clearLogs()` function now performs an instantaneous pointer update rather than an intensive flash erasure. It defines a new "batch" boundary by advancing the `startSector` and `currentSector` to a fresh, clean sector, ensuring subsequent reads only process valid, current data.
 
+## Boot Session Indexing
+- The system maintains a dynamic `bootIndex` in RAM, which tracks the start position (sector and offset) of every boot session.
+- Unlike previous versions which had a fixed limit (e.g., 32 sessions), the index is now dynamically allocated and grows as needed to accommodate all boot sessions available in the flash memory.
+- During initialization, the system scans forward from the `startSector` to reconstruct this index, ensuring all historical data remains accessible regardless of the number of reboots.
+
 ## Advantages
 - **Performance:** Clearing logs is nearly instantaneous.
 - **Flash Longevity:** Significantly reduces wear by eliminating mass flash erasures.
 - **Data Integrity:** Explicit pointers (`current` and `start`) ensure the system always knows the exact range of valid data, preventing the retrieval of extraneous "garbage" logs from old sessions.
+

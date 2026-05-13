@@ -19,7 +19,6 @@
 
 #include "updates.h"
 #include "web_ui.h"
-#include "sat_manager.h"
 
 extern bool useMockSensor;
 extern bool autoSimMode;
@@ -86,8 +85,21 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
+#define EEPROM_BOOT_ID 12
 #define EEPROM_SERVO_REST 13
+#define EEPROM_ELAPSED_ADDR 14
+#define EEPROM_LAST_KNOWN_BOOT_ID 15
+#define EEPROM_LAST_KNOWN_START_UNIX 16
 #define SETTINGS_MAGIC_VAL 0xA8
+
+struct BootTimestamp {
+  uint8_t bootId;
+  uint32_t startUnix;
+  uint32_t duration;
+};
+
+BootTimestamp* bootTable = NULL;
+int bootTableCount = 0;
 
 struct DeviceSettings {
   uint8_t magic;
@@ -101,8 +113,122 @@ struct DeviceSettings {
 };
 
 // ============================================
-// AUTO CONTROL LOGIC
+// SAT: BOOT TABLE PREPARATION
 // ============================================
+
+uint32_t scanBootDuration(int bootIdx) {
+  int s = bootIndex[bootIdx].sector;
+  int o = bootIndex[bootIdx].offset;
+  uint32_t lastTimeSec = 0;
+
+  int endS, endO;
+  if (bootIdx + 1 < bootIndexCount) {
+    endS = bootIndex[bootIdx + 1].sector;
+    endO = bootIndex[bootIdx + 1].offset;
+  } else {
+    endS = currentSector;
+    endO = currentOffset;
+  }
+
+  int limit = 0;
+  while (!(s == endS && o == endO) && limit < 2000) {
+    limit++;
+    uint32_t addr = FLASH_LOG_START + (s * LOG_SECTOR_SIZE) + (o * sizeof(LogEntry));
+    LogEntry entry;
+    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
+    if (entry.timeSec != 0xFFFFFFFF) {
+      lastTimeSec = entry.timeSec;
+    }
+    o++;
+    if (o >= LOGS_PER_SECTOR) { o = 0; s = (s + 1) % FLASH_NUM_SECTORS; }
+  }
+  return lastTimeSec;
+}
+
+void sortBootTable() {
+  for (int i = 0; i < bootTableCount - 1; i++) {
+    for (int j = 0; j < bootTableCount - i - 1; j++) {
+      if (bootTable[j].bootId > bootTable[j + 1].bootId) {
+        BootTimestamp t = bootTable[j];
+        bootTable[j] = bootTable[j + 1];
+        bootTable[j + 1] = t;
+      }
+    }
+  }
+}
+
+void prepareBootTable() {
+  if (bootTable) { free(bootTable); bootTable = NULL; bootTableCount = 0; }
+
+  int allocSize = bootIndexCount + 1;
+  if (allocSize < 1) allocSize = 1;
+  bootTable = (BootTimestamp*)malloc(allocSize * sizeof(BootTimestamp));
+  if (!bootTable) { Serial.println("FATAL: bootTable OOM"); return; }
+  bootTableCount = 0;
+
+  for (int i = 0; i < bootIndexCount && i < allocSize; i++) {
+    bootTable[bootTableCount].bootId = bootIndex[i].bootId;
+    bootTable[bootTableCount].duration = scanBootDuration(i);
+    bootTable[bootTableCount].startUnix = 0;
+    bootTableCount++;
+  }
+  sortBootTable();
+
+  uint32_t lastKnownStartUnix = 0;
+  uint8_t lastKnownBootId = EEPROM.read(EEPROM_LAST_KNOWN_BOOT_ID);
+  EEPROM.get(EEPROM_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
+  if (lastKnownStartUnix > 2000000000) lastKnownStartUnix = 0; // uninitialized EEPROM
+
+  int anchorIdx = -1;
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == lastKnownBootId) {
+      bootTable[i].startUnix = lastKnownStartUnix;
+      anchorIdx = i; break;
+    }
+  }
+  if (anchorIdx >= 0) {
+    for (int i = anchorIdx - 1; i >= 0; i--)
+      bootTable[i].startUnix = bootTable[i + 1].startUnix - bootTable[i].duration;
+    for (int i = anchorIdx + 1; i < bootTableCount; i++)
+      bootTable[i].startUnix = bootTable[i - 1].startUnix + bootTable[i - 1].duration;
+  }
+
+  uint8_t curBootId = EEPROM.read(EEPROM_BOOT_ID);
+  uint32_t curStart = 0;
+  if (bootTableCount > 0)
+    curStart = bootTable[bootTableCount - 1].startUnix + bootTable[bootTableCount - 1].duration;
+  else if (lastKnownStartUnix > 0)
+    curStart = lastKnownStartUnix;
+
+  bootTable[bootTableCount].bootId = curBootId;
+  bootTable[bootTableCount].startUnix = curStart;
+  bootTable[bootTableCount].duration = 0;
+  bootTableCount++;
+
+  Serial.println("SAT boot table OK (" + String(bootTableCount) + " entries)");
+}
+
+// Derived time functions
+uint32_t getBootUptime() {
+  return millis() / 1000;
+}
+
+uint32_t getElapsedSeconds() {
+  for (int i = 0; i < bootTableCount; i++) {
+    if (bootTable[i].bootId == currentBootId) {
+      return bootTable[i].startUnix + getBootUptime() - startTimestamp;
+    }
+  }
+  return getBootUptime();
+}
+
+uint32_t getCurrentDay() {
+  return getElapsedSeconds() / 86400;
+}
+
+bool isLockdown() {
+  return getCurrentDay() >= 18;
+}
 
 void saveSettings() {
   DeviceSettings settings;
@@ -210,6 +336,17 @@ void handleStatus() {
                 ",\"startTimestamp\":" + String(startTimestamp) +
                 ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                 ",\"currentDay\":" + String(getCurrentDay()) +
+                ",\"bootUptimeSec\":" + String(getBootUptime()) +
+                ",\"bootTable\":\"";
+  if (bootTable) {
+    int maxShow = bootTableCount;
+    if (maxShow > 32) maxShow = 32;
+    for (int i = 0; i < maxShow; i++) {
+      if (i > 0) json += ";";
+      json += String(bootTable[i].bootId) + "," + String(bootTable[i].startUnix) + "," + String(bootTable[i].duration);
+    }
+  }
+  json += "\",\"bootTableCount\":" + String(bootTableCount) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
   server.send(200, "application/json", json);
@@ -429,6 +566,10 @@ void handleSettingsApi() {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
+      bootTable[bootTableCount - 1].startUnix = startTimestamp;
+      EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, startTimestamp);
+      EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, currentBootId);
+      EEPROM.commit();
       restingAt45 = true;
       EEPROM.write(EEPROM_SERVO_REST, 1);  // Save as left (true = 1)
       EEPROM.commit();
@@ -459,6 +600,36 @@ void handleSettingsApi() {
         }
       }
       server.send(200, "text/plain", "No sync needed");
+    } else if (action == "syncTimestamps" && server.hasArg("data")) {
+      String data = server.arg("data");
+      int count = 1;
+      for (int i = 0; i < (int)data.length(); i++) { if (data[i] == ';') count++; }
+
+      if (bootTable) { free(bootTable); bootTable = NULL; }
+      bootTable = (BootTimestamp*)malloc(count * sizeof(BootTimestamp));
+      if (!bootTable) { server.send(500, "text/plain", "malloc failed"); return; }
+      bootTableCount = 0;
+      int pos = 0;
+      for (int i = 0; i < count; i++) {
+        int sep = data.indexOf(';', pos);
+        if (sep == -1) sep = data.length();
+        int comma = data.indexOf(',', pos);
+        if (comma == -1 || comma > sep) break;
+        uint8_t bootId = (uint8_t)data.substring(pos, comma).toInt();
+        uint32_t startUnix = (uint32_t)data.substring(comma + 1, sep).toInt();
+        bootTable[bootTableCount].bootId = bootId;
+        bootTable[bootTableCount].startUnix = startUnix;
+        bootTable[bootTableCount].duration = 0;
+        bootTableCount++;
+        pos = sep + 1;
+      }
+
+      if (bootTableCount > 0) {
+        EEPROM.put(EEPROM_LAST_KNOWN_START_UNIX, bootTable[bootTableCount - 1].startUnix);
+        EEPROM.write(EEPROM_LAST_KNOWN_BOOT_ID, bootTable[bootTableCount - 1].bootId);
+        EEPROM.commit();
+      }
+      server.send(200, "text/plain", "Synced " + String(bootTableCount) + " entries");
     } else if (action == "adjustDay" && server.hasArg("dir")) {
       int dir = server.arg("dir").toInt();
       uint32_t currentElapsed = getElapsedSeconds();
@@ -749,7 +920,17 @@ void setup() {
   initDHT();
 
   initRecovery();
+  
+  uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
+  bootId++;
+  EEPROM.write(EEPROM_BOOT_ID, bootId);
+  EEPROM.commit();
 
+  initLogging(bootId);
+  loadSettings();
+  
+  servoInit();
+  
   connectWiFi();
 
   // Start mDNS responder for EGGubator.local
@@ -777,22 +958,13 @@ void setup() {
   server.on("/rollback", handleRollback);
   server.on("/recovery", handleRecovery);
   server.on("/recovery/reset", handleRecoveryReset);
-  server.on("/timestamps", handleTimestamps);
+  // SAT timestamps handled via /status (GET) and /settings/api (PUT)
   httpUpdater.setup(&server);
   server.begin();
-  
-  Serial.println("HTTP server started");
-  
-  uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
-  bootId++;
-  EEPROM.write(EEPROM_BOOT_ID, bootId);
-  EEPROM.commit();
 
-  initLogging(bootId);
   prepareBootTable();
-  loadSettings();
-  
-  servoInit();
+
+  Serial.println("HTTP server started");
 }
 
 // ============================================
