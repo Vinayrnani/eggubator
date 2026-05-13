@@ -22,8 +22,8 @@ void connectWiFi() {
   IPAddress subnetIP = WiFi.subnetMask();
   Serial.println("\nGot IP (DHCP): " + localIP.toString());
   
-  // 2. Configure Static IP (.10)
-  localIP[3] = 10;
+  // 2. Configure Static IP (.72)
+  localIP[3] = 72;
   WiFi.disconnect(true); // Disconnect fully
   WiFi.config(localIP, gatewayIP, subnetIP);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);

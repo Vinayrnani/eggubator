@@ -4,12 +4,14 @@
 uint8_t currentBootId = 0;
 uint16_t currentSector = 0;
 uint16_t currentOffset = 0;
+uint16_t startSector = 0;
 uint32_t logsInCurrentBoot = 0;
 uint32_t totalLogsCached = 0;
 unsigned long lastLogTime = 0;
 
-BootIndexEntry bootIndex[MAX_BOOT_INDEX];
+BootIndexEntry* bootIndex = nullptr;
 int bootIndexCount = 0;
+int bootIndexCapacity = 0;
 
 float lastLoggedTemp = -100.0;
 float lastLoggedHum = -100.0;
@@ -20,9 +22,13 @@ void initLogging(uint8_t bootId) {
   logsInCurrentBoot = 0;
   
   EEPROM.get(EEPROM_CURRENT_SECTOR, currentSector);
-  if (currentSector >= FLASH_NUM_SECTORS) {
+  EEPROM.get(EEPROM_START_SECTOR, startSector);
+
+  if (currentSector >= FLASH_NUM_SECTORS || startSector >= FLASH_NUM_SECTORS) {
     currentSector = 0;
+    startSector = 0;
     EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
+    EEPROM.put(EEPROM_START_SECTOR, startSector);
     EEPROM.commit();
     ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
   }
@@ -40,6 +46,10 @@ void initLogging(uint8_t bootId) {
     if (i == LOGS_PER_SECTOR - 1) {
       // Sector is perfectly full, we should move to next
       currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+      if (currentSector == startSector) {
+        startSector = (startSector + 1) % FLASH_NUM_SECTORS;
+        EEPROM.put(EEPROM_START_SECTOR, startSector);
+      }
       EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
       EEPROM.commit();
       ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
@@ -52,56 +62,16 @@ void initLogging(uint8_t bootId) {
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
 
-  // Build boot index: scan backward to find oldest, then forward to record bootId positions
+  // Build boot index dynamically
   bootIndexCount = 0;
+  bootIndexCapacity = 16;
+  if (bootIndex != nullptr) free(bootIndex);
+  bootIndex = (BootIndexEntry*)malloc(bootIndexCapacity * sizeof(BootIndexEntry));
   uint8_t lastBootId = 0xFF;
 
-  // Find oldest position by scanning backward
-  int scanS = currentSector;
-  int scanO = currentOffset - 1;
-  if (scanO < 0) {
-    scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-    scanO = LOGS_PER_SECTOR - 1;
-  }
-
-  int oldestS = currentSector;
-  int oldestO = currentOffset;
-
-  while (true) {
-    ESP.wdtFeed();
-    uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
-    LogEntry entry;
-    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
-
-    if (entry.timeSec == 0xFFFFFFFF) {
-      // Found erased flash, oldest is next position
-      oldestS = scanS;
-      oldestO = scanO + 1;
-      if (oldestO >= LOGS_PER_SECTOR) {
-        oldestO = 0;
-        oldestS = (oldestS + 1) % FLASH_NUM_SECTORS;
-      }
-      break;
-    }
-
-    // Move to previous position
-    scanO--;
-    if (scanO < 0) {
-      scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-      scanO = LOGS_PER_SECTOR - 1;
-    }
-
-    // Stop if full circle
-    if (scanS == currentSector && scanO == currentOffset) {
-      oldestS = (currentSector + 1) % FLASH_NUM_SECTORS;
-      oldestO = 0;
-      break;
-    }
-  }
-
   // Scan forward from oldest to current position, record bootId changes and count logs
-  int s = oldestS;
-  int o = oldestO;
+  int s = startSector;
+  int o = 0;
   totalLogsCached = 0;
   while (!(s == currentSector && o == currentOffset)) {
     ESP.wdtFeed();
@@ -114,12 +84,14 @@ void initLogging(uint8_t bootId) {
     totalLogsCached++;
 
     if (bootIndexCount == 0 || entry.bootId != lastBootId) {
-      if (bootIndexCount < MAX_BOOT_INDEX) {
-        bootIndex[bootIndexCount].bootId = entry.bootId;
-        bootIndex[bootIndexCount].sector = s;
-        bootIndex[bootIndexCount].offset = o;
-        bootIndexCount++;
+      if (bootIndexCount >= bootIndexCapacity) {
+        bootIndexCapacity *= 2;
+        bootIndex = (BootIndexEntry*)realloc(bootIndex, bootIndexCapacity * sizeof(BootIndexEntry));
       }
+      bootIndex[bootIndexCount].bootId = entry.bootId;
+      bootIndex[bootIndexCount].sector = s;
+      bootIndex[bootIndexCount].offset = o;
+      bootIndexCount++;
       lastBootId = entry.bootId;
     }
 
@@ -161,12 +133,14 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 
   // Add to boot index if this is a new bootId
   if (bootIndexCount == 0 || currentBootId != bootIndex[bootIndexCount-1].bootId) {
-    if (bootIndexCount < MAX_BOOT_INDEX) {
-      bootIndex[bootIndexCount].bootId = currentBootId;
-      bootIndex[bootIndexCount].sector = currentSector;
-      bootIndex[bootIndexCount].offset = currentOffset;
-      bootIndexCount++;
+    if (bootIndexCount >= bootIndexCapacity) {
+      bootIndexCapacity = bootIndexCapacity == 0 ? 16 : bootIndexCapacity * 2;
+      bootIndex = (BootIndexEntry*)realloc(bootIndex, bootIndexCapacity * sizeof(BootIndexEntry));
     }
+    bootIndex[bootIndexCount].bootId = currentBootId;
+    bootIndex[bootIndexCount].sector = currentSector;
+    bootIndex[bootIndexCount].offset = currentOffset;
+    bootIndexCount++;
   }
 
   uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
@@ -183,6 +157,10 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
 
   if (currentOffset >= LOGS_PER_SECTOR) {
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    if (currentSector == startSector) {
+      startSector = (startSector + 1) % FLASH_NUM_SECTORS;
+      EEPROM.put(EEPROM_START_SECTOR, startSector);
+    }
     EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
     EEPROM.commit();
     ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
@@ -218,14 +196,10 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
     }
 
     if (bootStartS == -1) {
-      // BootId not in index - fall back to scanning backward
-      int scanS = currentSector;
-      int scanO = currentOffset - 1;
-      if (scanO < 0) {
-        scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-        scanO = LOGS_PER_SECTOR - 1;
-      }
-      while (true) {
+      // BootId not in index - fall back to scanning forward from startSector
+      int scanS = startSector;
+      int scanO = 0;
+      while (!(scanS == currentSector && scanO == currentOffset)) {
         ESP.wdtFeed();
         uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
         LogEntry entry;
@@ -239,12 +213,11 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
           targetOffset = scanO;
           break;
         }
-        scanO--;
-        if (scanO < 0) {
-          scanS = (scanS - 1 + FLASH_NUM_SECTORS) % FLASH_NUM_SECTORS;
-          scanO = LOGS_PER_SECTOR - 1;
+        scanO++;
+        if (scanO >= LOGS_PER_SECTOR) {
+          scanS = (scanS + 1) % FLASH_NUM_SECTORS;
+          scanO = 0;
         }
-        if (scanS == currentSector && scanO == currentOffset) break; // full circle
       }
     } else {
       // Scan forward from boot start to find exact match
@@ -309,11 +282,13 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
 }
 
 void clearLogs() {
-  currentSector = 0;
+  startSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+  currentSector = startSector;
   currentOffset = 0;
+  EEPROM.put(EEPROM_START_SECTOR, startSector);
   EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
   EEPROM.commit();
-  ESP.flashEraseSector((FLASH_LOG_START) / FLASH_SECTOR_SIZE);
+  ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
