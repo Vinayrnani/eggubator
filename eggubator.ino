@@ -701,7 +701,15 @@ void handleRecoveryReset() {
 void handleClearFlash() {
   clearLogs();
   prepareBootTable();
-  server.send(200, "text/plain", "Flash cleared, advanced to sector " + String(currentSector) + ".");
+  
+  // Reset Boot ID in EEPROM
+  EEPROM.write(EEPROM_BOOT_ID, 0);
+  EEPROM.commit();
+  
+  // Send response and reboot
+  server.send(200, "text/plain", "Flash cleared, boot ID reset to 0, rebooting...");
+  delay(500); // Allow time for TCP transmission
+  ESP.restart();
 }
 
 // ============================================
