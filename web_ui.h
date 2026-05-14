@@ -231,6 +231,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let currentBootId = 0;
     let initialLoadDone = false;
     let totalLogsLoaded = 0;
+    let serverBootStartUnix = 0;
 
     const db = new Dexie('EggubatorDB');
     db.version(1).stores({ logs: 't, timeSec, bootId, temp, hum, h, a, f, s' });
@@ -898,14 +899,23 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         currentBootId = statusData.bootId;
         updateLiveData(statusData);
 
-        // Step 1b: Purge any remaining invalid entries (t < year 2000)
+        // Step 1: SAT sync first to populate bootStartCache
+        const satProgress = document.getElementById('loadingProgress');
+        if (satProgress) satProgress.textContent = 'Syncing timestamps...';
+        try {
+          await syncSAT();
+        } catch (e) {
+          console.warn('Initial SAT sync failed:', e);
+        }
+
+        // Step 2: Purge any remaining invalid entries (t < year 2000)
         const invalidCount = await db.logs.where('t').below(946684800000).count();
         if (invalidCount > 0) {
           await db.logs.where('t').below(946684800000).delete();
           console.log('Purged', invalidCount, 'invalid entries with bad timestamps');
         }
 
-        // Step 2: Check if we already have logs in Dexie — skip full pagination if so
+        // Step 3: Check if we already have logs in Dexie — skip full pagination if so
         const existingCount = await db.logs.count();
         if (existingCount > 0) {
           initialLoadDone = true;
@@ -921,10 +931,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           await fetchNextBatch(0, 0);
         }
 
-        // Step 3: Check if auto-reset needed
+        // Step 4: Check if auto-reset needed
         await checkAutoReset();
 
-        // Step 4: Start main loop
+        // Step 5: Start main loop
         mainLoop();
       } catch(e) {
         console.error('Init failed:', e);

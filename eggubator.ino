@@ -248,7 +248,8 @@ void handleData() {
                 ",\"startTimestamp\":" + String(startTimestamp) +
                 ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                 ",\"currentDay\":" + String(getCurrentDay()) +
-                ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot);
+                ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) +
+                ",\"bootStartUnix\":" + String(startTimestamp + getElapsedSeconds() - uptimeSec);
 
 json += ",\"totalLogs\":" + String(getTotalLogs());
 
