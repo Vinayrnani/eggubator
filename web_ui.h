@@ -755,12 +755,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         mainChart.data.datasets[3].stepped = isStepped;
         mainChart.data.datasets[4].stepped = isStepped;
 
-        mainChart.data.datasets[0].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.temp }));
-        mainChart.data.datasets[1].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.hum }));
-        mainChart.data.datasets[2].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: l.h_dc }));
-        mainChart.data.datasets[3].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: 2.0 + l.a_dc }));
-        mainChart.data.datasets[4].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: 4.0 + l.f_dc }));
-        mainChart.data.datasets[5].data = logs.map(l => ({ x: Math.min(0, (l.t - now)/1000), y: (l.s == 1 ? 6.0 : (l.s == 2 ? 8.0 : 7.0)) }));
+        mainChart.data.datasets[0].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.temp }));
+        mainChart.data.datasets[1].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.hum }));
+        mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h_dc }));
+        mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: 2.0 + l.a_dc }));
+        mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: 4.0 + l.f_dc }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: (l.s == 1 ? 6.0 : (l.s == 2 ? 8.0 : 7.0)) }));
         
         mainChart.update('none');
       }
