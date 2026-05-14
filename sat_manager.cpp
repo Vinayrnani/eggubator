@@ -35,7 +35,6 @@ void prepareBootTable() {
     bootSessions[bootSessionCount - 1].startUnix = curStart;
   }
 
-  Serial.println("SAT boot table OK (" + String(bootSessionCount) + " entries)");
 }
 
 uint32_t getBootUptime() {
