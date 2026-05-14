@@ -5,4 +5,11 @@ node_modules/
 
 # Build outputs
 build_output/
-firmware.bin
+build/
+
+# Playwright test artifacts
+.playwright-mcp/
+test/playwright/
+
+# Sisyphus planning artifacts
+.sisyphus/

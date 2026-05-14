@@ -11,7 +11,7 @@ An ESP8266-based automatic egg incubator controller with web interface, temperat
   - Heater relay (pin D1)
   - Atomizer/ultrasonic mist maker relay (pin D2)
   - Fan relay (pin D3)
-- **Servo MG996R** - Egg turner (pin D5)
+- **Servo SG90** - Egg turner (pin D5)
 - **Power Supply** - 5V/2A for ESP8266, 12V for heater/atomizer
 
 ### Wiring
