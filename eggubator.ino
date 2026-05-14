@@ -25,11 +25,8 @@ extern bool useMockSensor;
 extern bool autoSimMode;
 extern float mockTemp;
 extern float mockHum;
-extern float simTemp;
-extern float simHum;
 extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 
-extern uint16_t startSector;
 
 #define KILL_OFF 0
 #define AUTO 1
