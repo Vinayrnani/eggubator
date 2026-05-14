@@ -9,7 +9,10 @@ build/
 
 # Playwright test artifacts
 .playwright-mcp/
-test/playwright/
+test/playwright/.playwright-mcp/
+test/playwright/screenshots/
+test/playwright/logs/
+test/playwright/*.md
 
 # Sisyphus planning artifacts
 .sisyphus/
