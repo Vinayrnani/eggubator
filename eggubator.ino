@@ -303,23 +303,27 @@ void handleControl() {
       if (mode == "left") {
         servoEnabled = true;
         restingAt45 = true;
+        int targetAngle = 45 - angleAdjustment;
+        targetAngle = constrain(targetAngle, 0, 180);
+        myServo.write(targetAngle);
         myServo.attach(SERVO_PIN, 544, 2450);
-        myServo.write(0);
         delay(500);
         myServo.detach();
-        server.send(200, "text/plain", "Servo moved to left (0)");
+        server.send(200, "text/plain", "Servo moved to left (" + String(targetAngle) + ")");
       } else if (mode == "right") {
         servoEnabled = true;
         restingAt45 = false;
+        int targetAngle = 135 + angleAdjustment;
+        targetAngle = constrain(targetAngle, 0, 180);
+        myServo.write(targetAngle);
         myServo.attach(SERVO_PIN, 544, 2450);
-        myServo.write(180);
         delay(500);
         myServo.detach();
-        server.send(200, "text/plain", "Servo moved to right (180)");
+        server.send(200, "text/plain", "Servo moved to right (" + String(targetAngle) + ")");
       } else if (mode == "center") {
         servoEnabled = true;
-        myServo.attach(SERVO_PIN, 544, 2450);
         myServo.write(90);
+        myServo.attach(SERVO_PIN, 544, 2450);
         delay(500);
         myServo.detach();
         server.send(200, "text/plain", "Servo moved to center (90)");
@@ -328,8 +332,8 @@ void handleControl() {
         servoEnabled = !isKillOff;
         if (isKillOff) {
           servoPosition = 0;
-          myServo.attach(SERVO_PIN, 544, 2450);
           myServo.write(90);
+          myServo.attach(SERVO_PIN, 544, 2450);
           delay(500);
           myServo.detach();
         }
@@ -594,8 +598,8 @@ void servoInit() {
   int initialAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
   initialAngle = constrain(initialAngle, 0, 180);
   
-  myServo.attach(SERVO_PIN, 544, 2450);
   myServo.write(initialAngle);
+  myServo.attach(SERVO_PIN, 544, 2450);
   delay(500);
   myServo.detach();
 }

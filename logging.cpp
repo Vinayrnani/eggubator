@@ -443,9 +443,14 @@ bool getLastServoPosition(bool* out_restingAt45) {
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
 
     if (entry.timeSec != 0xFFFFFFFF && entry.hum <= 100) {
-      uint8_t turner = (entry.states >> 3) & 0x03;
-      *out_restingAt45 = (turner == 2);
-      return true;
+      uint8_t turner = GET_TURNER(entry.states);
+      if (turner == 1) {
+        *out_restingAt45 = true;
+        return true;
+      } else if (turner == 2) {
+        *out_restingAt45 = false;
+        return true;
+      }
     }
 
     if (o == 0) {
