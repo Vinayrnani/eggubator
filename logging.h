@@ -12,9 +12,11 @@ struct __attribute__((packed)) LogEntry {
 };
 
 #define FLASH_LOG_START 0x200000
-#define LOG_SECTOR_SIZE 4096
+#ifndef FLASH_SECTOR_SIZE
+#define FLASH_SECTOR_SIZE 4096
+#endif
 #define FLASH_NUM_SECTORS 256
-#define LOGS_PER_SECTOR (LOG_SECTOR_SIZE / sizeof(LogEntry))
+#define LOGS_PER_SECTOR (FLASH_SECTOR_SIZE / sizeof(LogEntry))
 #define MAX_LOG_ENTRIES (LOGS_PER_SECTOR * FLASH_NUM_SECTORS)
 
 #define EEPROM_CURRENT_SECTOR 32
@@ -33,6 +35,7 @@ struct __attribute__((packed)) LogEntry {
 extern uint8_t currentBootId;
 extern uint16_t currentSector;
 extern uint16_t currentOffset;
+extern uint16_t startSector;
 extern uint32_t logsInCurrentBoot;
 extern unsigned long lastLogTime;
 
@@ -52,6 +55,7 @@ extern float lastLoggedTemp;
 extern float lastLoggedHum;
 extern uint8_t lastLoggedStates;
 
+void initSectorPointers();
 void initLogging(uint8_t bootId);
 bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval = 90000);
 int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32_t sinceTimeSec = 0);

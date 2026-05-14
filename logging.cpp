@@ -17,82 +17,77 @@ float lastLoggedTemp = -100.0;
 float lastLoggedHum = -100.0;
 uint8_t lastLoggedStates = 0xFF;
 
-void writeSectorMeta() {
+void writeMetaEntry() {
   LogEntry entry;
   entry.hum = META_SECTOR_POINTER;
-  entry.temp = (uint8_t)currentSector;
+  entry.temp = 0;
   entry.timeSec = startSector;
   entry.states = 0;
   entry.bootId = currentBootId;
-
-  uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (currentOffset * sizeof(LogEntry));
+  
+  uint32_t writeAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE);
   ESP.flashWrite(writeAddr, (uint32_t*)&entry, sizeof(LogEntry));
+}
+
+void initSectorPointers() {
+  bool firstBoot = true;
+  for (int s = 0; s < FLASH_NUM_SECTORS; s++) {
+    uint8_t firstByte;
+    ESP.flashRead(FLASH_LOG_START + (s * FLASH_SECTOR_SIZE), &firstByte, 1);
+    if (firstByte != 0xFF) { firstBoot = false; break; }
+  }
+
+  if (firstBoot) {
+    currentSector = 0;
+  } else {
+    for (int s = 0; s < FLASH_NUM_SECTORS; s++) {
+      uint8_t firstByte;
+      ESP.flashRead(FLASH_LOG_START + (s * FLASH_SECTOR_SIZE), &firstByte, 1);
+      if (firstByte == 0xFF) {
+        currentSector = (s + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
+        break;
+      }
+      if (s == FLASH_NUM_SECTORS - 1) {
+        currentSector = 0;
+      }
+    }
+  }
+
+  LogEntry metaEntry;
+  ESP.flashRead(FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE), (uint32_t*)&metaEntry, sizeof(LogEntry));
+  
+  if (metaEntry.hum == META_SECTOR_POINTER) {
+    startSector = (uint16_t)metaEntry.timeSec;
+  } else {
+    uint16_t prevSector = (currentSector + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
+    ESP.flashRead(FLASH_LOG_START + (prevSector * FLASH_SECTOR_SIZE), (uint32_t*)&metaEntry, sizeof(LogEntry));
+    if (metaEntry.hum == META_SECTOR_POINTER) {
+      startSector = (uint16_t)metaEntry.timeSec;
+    } else {
+      startSector = currentSector;
+    }
+  }
+
+  currentOffset = 0;
+  for (int i = 0; i < LOGS_PER_SECTOR; i++) {
+    uint32_t addr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE) + (i * sizeof(LogEntry));
+    uint32_t timeSec;
+    ESP.flashRead(addr, &timeSec, 4);
+    if (timeSec == 0xFFFFFFFF) {
+      currentOffset = i;
+      break;
+    }
+  }
 }
 
 void initLogging(uint8_t bootId) {
   currentBootId = bootId;
   logsInCurrentBoot = 0;
   
-  EEPROM.get(EEPROM_CURRENT_SECTOR, currentSector);
-  EEPROM.get(EEPROM_START_SECTOR, startSector);
-
-  if (currentSector >= FLASH_NUM_SECTORS || startSector >= FLASH_NUM_SECTORS) {
-    currentSector = 0;
-    startSector = 0;
-    EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-    EEPROM.put(EEPROM_START_SECTOR, startSector);
-    EEPROM.commit();
+  if (currentOffset == 0) {
     ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
-  }
-
-  // Scan current sector for the first blank slot
-  uint32_t sectorAddr = FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE);
-  currentOffset = 0;
-  LogEntry entry;
-  for (int i = 0; i < LOGS_PER_SECTOR; i++) {
-    ESP.flashRead(sectorAddr + (i * sizeof(LogEntry)), (uint32_t*)&entry, sizeof(LogEntry));
-    if (entry.timeSec == 0xFFFFFFFF) {
-      currentOffset = i;
-      break;
-    }
-    if (i == LOGS_PER_SECTOR - 1) {
-      // Sector is perfectly full, we should move to next
-      currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
-      if (currentSector == startSector) {
-        startSector = (startSector + 1) % FLASH_NUM_SECTORS;
-        EEPROM.put(EEPROM_START_SECTOR, startSector);
-      }
-      EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-      EEPROM.commit();
-      ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
-      currentOffset = 0;
-    }
-  }
-
-  bool foundMeta = false;
-  int scanS = currentSector;
-  int scanO = currentOffset;
-  for (int i = 0; i < 100; i++) {
-    if (scanO == 0) {
-      scanO = LOGS_PER_SECTOR - 1;
-      scanS = (scanS + FLASH_NUM_SECTORS - 1) % FLASH_NUM_SECTORS;
-    } else {
-      scanO--;
-    }
-    uint32_t addr = FLASH_LOG_START + (scanS * FLASH_SECTOR_SIZE) + (scanO * sizeof(LogEntry));
-    LogEntry entry;
-    ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
-if (entry.timeSec != 0xFFFFFFFF && entry.hum == META_SECTOR_POINTER) {
-      currentSector = (uint16_t)entry.temp;
-      startSector = (uint16_t)entry.timeSec;
-      foundMeta = true;
-      break;
-    }
-  }
-
-  if (!foundMeta) {
-    EEPROM.get(EEPROM_CURRENT_SECTOR, currentSector);
-    EEPROM.get(EEPROM_START_SECTOR, startSector);
+    writeMetaEntry();
+    currentOffset = 1;
   }
 
   lastLogTime = 0;
@@ -243,16 +238,22 @@ bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int se
   totalLogsCached++;
 
   if (currentOffset >= LOGS_PER_SECTOR) {
-    writeSectorMeta();
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    
+    writeMetaEntry();
+
+    int nextSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    uint8_t nextFirstByte;
+    ESP.flashRead(FLASH_LOG_START + (nextSector * FLASH_SECTOR_SIZE), &nextFirstByte, 1);
+    if (nextFirstByte != 0xFF) {
+      ESP.flashEraseSector((FLASH_LOG_START + (nextSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    }
+
     if (currentSector == startSector) {
       startSector = (startSector + 1) % FLASH_NUM_SECTORS;
-      EEPROM.put(EEPROM_START_SECTOR, startSector);
     }
-    EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-    EEPROM.commit();
-    ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
-    currentOffset = 0;
+    currentOffset = 1;
   }
 
   return true;
@@ -372,13 +373,16 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
 }
 
 void clearLogs() {
-  startSector = (currentSector + 1) % FLASH_NUM_SECTORS;
-  currentSector = startSector;
+  for (int s = 0; s < FLASH_NUM_SECTORS; s++) {
+    ESP.flashEraseSector((FLASH_LOG_START + (s * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    ESP.wdtFeed();
+  }
+  currentSector = 0;
+  startSector = 0;
   currentOffset = 0;
-  EEPROM.put(EEPROM_START_SECTOR, startSector);
-  EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-  EEPROM.commit();
-  ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+  writeMetaEntry();
+  currentOffset = 1;
+  
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
@@ -403,16 +407,22 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
 
   currentOffset++;
   if (currentOffset >= LOGS_PER_SECTOR) {
-    writeSectorMeta();
     currentSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    
+    writeMetaEntry();
+
+    int nextSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+    uint8_t nextFirstByte;
+    ESP.flashRead(FLASH_LOG_START + (nextSector * FLASH_SECTOR_SIZE), &nextFirstByte, 1);
+    if (nextFirstByte != 0xFF) {
+      ESP.flashEraseSector((FLASH_LOG_START + (nextSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+    }
+
     if (currentSector == startSector) {
       startSector = (startSector + 1) % FLASH_NUM_SECTORS;
-      EEPROM.put(EEPROM_START_SECTOR, startSector);
     }
-    EEPROM.put(EEPROM_CURRENT_SECTOR, currentSector);
-    EEPROM.commit();
-    ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
-    currentOffset = 0;
+    currentOffset = 1;
   }
 }
 
