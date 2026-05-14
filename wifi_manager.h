@@ -8,36 +8,25 @@
 #define WIFI_PASSWORD "dishoom1234"
 
 void connectWiFi() {
-  
+
   // 1. Initial DHCP connection to discover network info
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  
+  // 2. Wait for connection
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(500);
   }
-  
+
+  // 3. Configure Static IP
   IPAddress localIP = WiFi.localIP();
   IPAddress gatewayIP = WiFi.gatewayIP();
   IPAddress subnetIP = WiFi.subnetMask();
-  
-  // 2. Configure Static IP (.72)
   localIP[3] = 72;
-  WiFi.disconnect(true); // Disconnect fully
   WiFi.config(localIP, gatewayIP, subnetIP);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
-  // 3. Wait for static connection
-  delay(3000);
-  
-  // 4. Fallback if static IP failed
-  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() != localIP) {
-    WiFi.disconnect(true);
-    WiFi.config(0, 0, 0); // Revert to DHCP
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-    }
-  }
-  
+  // 4. Let SDK handle reconnection automatically
+  WiFi.setAutoReconnect(true);
 }
 
 bool isWiFiConnected() {
@@ -45,16 +34,7 @@ bool isWiFiConnected() {
 }
 
 void reconnectWiFi() {
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-      delay(500);
-      attempts++;
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-    }
-  }
+  // SDK handles auto-reconnect - no manual intervention needed
 }
 
 #endif
