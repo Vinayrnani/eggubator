@@ -119,7 +119,6 @@ void saveSettings() {
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
     EEPROM.commit();
-    Serial.println("Settings saved to EEPROM");
   }
 }
 
@@ -152,9 +151,7 @@ void loadSettings() {
       TARGET_HUMIDITY = 55.0;
       servoEnabled = true;
     }
-    Serial.println("Settings loaded from EEPROM");
   } else {
-    Serial.println("No saved settings found, using defaults");
     startTimestamp = 0;
     saveSettings();
   }
@@ -634,7 +631,6 @@ void rotateEggs() {
     restingAt45 = !restingAt45;
     
     lastServoTurn = millis();
-    Serial.println("Egg turn started from " + String(startAngle) + " to " + String(targetAngle));
   }
   
   if (turning) {
@@ -650,7 +646,6 @@ void rotateEggs() {
       turning = false;
       servoPosition = restingAt45 ? 1 : 2;
       lastServoTurn = millis();
-      Serial.println("Egg turn completed");
     } else {
       // Smooth slow movement over 10 seconds using linear interpolation
       float progress = (float)elapsed / (float)EGG_TURN_DURATION;
@@ -679,7 +674,6 @@ void handleReboot() {
 
 void handleRollback() {
   // Trigger rollback - restore previous firmware if available
-  Serial.println("Rollback triggered - resetting boot counter");
   EEPROM.write(EEPROM_BOOT_COUNT, MAX_BOOT_FAILURES);
   EEPROM.commit();
   server.send(200, "text/plain", "Rollback: please reflash to recover");
@@ -730,13 +724,10 @@ void setup() {
 
   // Start mDNS responder for EGGubator.local
   if (MDNS.begin("EGGubator")) {
-    Serial.println("mDNS responder started: EGGubator.local");
   }
 
   markBootSuccess();
 
-  Serial.print("Firmware: ");
-  Serial.println(FIRMWARE_VERSION);
 
 // Setup web server
   server.on("/", handleRoot);
@@ -757,7 +748,6 @@ void setup() {
   httpUpdater.setup(&server);
   server.begin();
   
-  Serial.println("HTTP server started");
   
   uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
   bootId++;
@@ -772,7 +762,6 @@ void setup() {
   bool recovered = false;
   if (getLastServoPosition(&restingAt45)) {
     recovered = true;
-    Serial.println("Servo position recovered from last log");
   }
 
   servoInit();
@@ -837,7 +826,6 @@ void loop() {
       delay(50);
       myServo.detach();
       adjustingAngle = false;
-      Serial.println("Angle adjustment transition complete");
     } else {
       // Cubic ease-in-out
       float progress = (float)elapsed / (float)ANGLE_ADJUST_DURATION;

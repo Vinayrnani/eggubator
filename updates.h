@@ -25,22 +25,15 @@ void initRecovery() {
   uint8_t bootOk = EEPROM.read(EEPROM_BOOT_OK);
   uint8_t bootCount = EEPROM.read(EEPROM_BOOT_COUNT);
   
-  Serial.print("Boot status: ");
-  Serial.print(bootOk, HEX);
-  Serial.print(" Count: ");
-  Serial.println(bootCount);
   
   // If previously failed, increment failure count
   if (bootOk != BOOT_OK_MAGIC) {
     bootCount++;
     EEPROM.write(EEPROM_BOOT_COUNT, bootCount);
     EEPROM.commit();
-    Serial.print("Boot failure #");
-    Serial.println(bootCount);
     
     // If too many failures, enter recovery mode
     if (bootCount >= MAX_BOOT_FAILURES) {
-      Serial.println("ENTERING RECOVERY MODE - Rolling back!");
       // Reset boot count after entering recovery
       EEPROM.write(EEPROM_BOOT_COUNT, 0);
       EEPROM.commit();
@@ -60,12 +53,10 @@ void initRecovery() {
 void markBootSuccess() {
   EEPROM.write(EEPROM_BOOT_OK, BOOT_OK_MAGIC);
   EEPROM.commit();
-  Serial.println("Boot marked as OK");
 }
 
 void setupOTA(ESP8266WebServer& server) {
   httpUpdater.setup(&server);
-  Serial.println("OTA update enabled");
 }
 
 bool checkForUpdate() {
@@ -96,14 +87,12 @@ void performUpdate() {
     size_t size = http.getSize();
     if (Update.begin(size)) {
       if (Update.writeStream(*stream) && Update.end(true)) {
-        Serial.println("Update complete, rebooting...");
         delay(1000);
         ESP.restart();
       }
     }
   }
   http.end();
-  Serial.println("Update failed");
 }
 
 void checkAndUpdateAuto() {
@@ -122,8 +111,6 @@ void checkAndUpdateAuto() {
     remoteVersion.trim();
     
     if (remoteVersion != FIRMWARE_VERSION) {
-      Serial.print("New firmware available: ");
-      Serial.println(remoteVersion);
       updateInProgress = true;
       http.end();
       
