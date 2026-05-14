@@ -4,8 +4,7 @@
 node_modules/
 
 # Build outputs
-build_output/
-build/
+build*/
 
 # Playwright test artifacts
 .playwright-mcp/
