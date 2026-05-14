@@ -10,6 +10,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EGGubator Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥚%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -596,9 +597,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       const bootMap = {};
       logs.forEach(l => {
         if (!bootMap[l.bootId]) {
-          bootMap[l.bootId] = { bootId: l.bootId, firstT: l.t, lastT: l.t };
+          bootMap[l.bootId] = { bootId: l.bootId, firstT: l.t, lastT: l.t, firstTimeSec: l.timeSec };
         } else {
-          if (l.t < bootMap[l.bootId].firstT) bootMap[l.bootId].firstT = l.t;
+          if (l.t < bootMap[l.bootId].firstT) {
+            bootMap[l.bootId].firstT = l.t;
+            bootMap[l.bootId].firstTimeSec = l.timeSec;
+          }
           if (l.t > bootMap[l.bootId].lastT) bootMap[l.bootId].lastT = l.t;
         }
       });
@@ -608,7 +612,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       return result.map(b => ({
         bootId: b.bootId,
-        startUnix: Math.round(b.firstT / 1000),
+        startUnix: Math.round((b.firstT - b.firstTimeSec * 1000) / 1000),
         duration: Math.round((b.lastT - b.firstT) / 1000)
       }));
     }
@@ -789,6 +793,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       // Update our boot table cache from server
       if (d.bootStartUnix) {
         serverBootStartUnix = d.bootStartUnix;
+        bootStartCache[d.bootId] = d.bootStartUnix;
         currentBootId = d.bootId;
         currentUptimeSec = d.uptimeSec;
       }
@@ -849,6 +854,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             try {
               const dataRes = await fetch('/data?boot=' + latestBootId + '&time=' + latestTimeSec + '&count=200');
               const dataData = await dataRes.json();
+              if (dataData.bootStartUnix) {
+                bootStartCache[dataData.bootId] = dataData.bootStartUnix;
+                currentUptimeSec = dataData.uptimeSec;
+              }
               const newEntries = decodeLogs(dataData.logs, dataData.sentCount);
               if (newEntries.length > 0) {
                 await db.logs.bulkPut(newEntries);
