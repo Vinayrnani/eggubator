@@ -426,6 +426,7 @@ void handleSettingsApi() {
     if (action == "newBatch" && server.hasArg("timestamp")) {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
       restingAt45 = true;
+      clearLogs(); // <-- Add this
       myServo.attach(SERVO_PIN, 544, 2450);
       myServo.write(90);
       delay(500);
@@ -700,7 +701,7 @@ void handleRecoveryReset() {
 void handleClearFlash() {
   clearLogs();
   prepareBootTable();
-  server.send(200, "text/plain", "Flash cleared and reset to sector 0.");
+  server.send(200, "text/plain", "Flash cleared, advanced to sector " + String(currentSector) + ".");
 }
 
 // ============================================
@@ -771,6 +772,7 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
+  processDNS();
   server.handleClient();
   MDNS.update();
 

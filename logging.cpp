@@ -373,16 +373,16 @@ int getLogHex(String& hex, int maxEntries, uint8_t sinceBootId, uint32_t sinceTi
 }
 
 void clearLogs() {
-  for (int s = 0; s < FLASH_NUM_SECTORS; s++) {
-    ESP.flashEraseSector((FLASH_LOG_START + (s * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
-    ESP.wdtFeed();
-  }
-  currentSector = 0;
-  startSector = 0;
-  currentOffset = 0;
+  startSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+  currentSector = startSector;
+  
+  // Erase new sector
+  ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+  
+  // Initialize with meta entry
   writeMetaEntry();
   currentOffset = 1;
-  
+
   lastLoggedTemp = -100.0;
   lastLoggedHum = -100.0;
   lastLoggedStates = 0xFF;
