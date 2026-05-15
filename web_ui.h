@@ -241,6 +241,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
     });
+    db.version(4).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
+    }).upgrade(async () => { await db.logs.clear(); });
 
     const bootStartCache = {};
 
@@ -280,7 +284,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           absoluteT = bootStartEstimate - (diff * 20 * 1000) + (timeSec * 1000);
         }
 
-        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 3) });
+        entries.push({ t: absoluteT, timeSec: timeSec, bootId: bootId, temp, hum, h: states & 1, a: (states >> 1) & 1, f: (states >> 2) & 1, s: ((states >> 3) & 0x1F) });
       }
       return entries;
     }
@@ -332,7 +336,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             { label: 'Heater', borderColor: '#f02849', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
             { label: 'Atomizer', borderColor: '#1877f2', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
             { label: 'Fan', borderColor: '#42b72a', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 },
-            { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yControls', stepped: true, pointRadius: 0, borderWidth: 2 }
+            { label: 'Turner', borderColor: 'rgba(146, 94, 13, 0.5)', data: [], yAxisID: 'yTurner', stepped: true, pointRadius: 0, borderWidth: 2 }
           ]
         },
         options: {
@@ -357,7 +361,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             },
             yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, ticks: { padding: 2 } },
             yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, grid: { display: false }, ticks: { padding: 2 } },
-            yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false }
+            yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false },
+            yTurner: { type: 'linear', position: 'right', min: 0, max: 180, display: false, grid: { drawOnChartArea: false } }
           },
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
@@ -377,7 +382,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                   if (idx === 2) return 'Heater: ' + (isStepped ? (val > 0 ? 'ON' : 'OFF') : Math.round(val * 100) + '%');
                   if (idx === 3) return 'Atomizer: ' + (isStepped ? (val > 2 ? 'ON' : 'OFF') : Math.round((val - 2) * 100) + '%');
                   if (idx === 4) return 'Fan: ' + (isStepped ? (val > 4 ? 'ON' : 'OFF') : Math.round((val - 4) * 100) + '%');
-                  if (idx === 5) return 'Turner: ' + (val === 7 ? 'Idle' : (val === 6 ? '← Left' : 'Right →'));
+                  if (idx === 5) return 'Turner: ' + Math.round(context.raw.y) + '°';
                   return null;
                 },
                 filter: function(context) {
@@ -405,9 +410,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('atomizerStat').firstElementChild.className = 'icon fa-solid fa-spray-can ' + (d.atomizer ? 'atomizer-active' : 'atomizer-idle');
       document.getElementById('fanStat').firstElementChild.className = 'icon fa-solid fa-fan ' + (d.fan ? 'fan-active fa-spin' : '');
       
-      const tIcon = document.getElementById('turnerIcon');
-      tIcon.style.transform = (d.servo == 1 ? 'rotate(-45deg)' : (d.servo == 2 ? 'rotate(45deg)' : 'rotate(0deg)'));
-      tIcon.style.color = (d.servo !== 0 ? 'var(--on)' : 'var(--idle)');
+      const servoAngle = Math.round(d.servo * 6);
+      document.getElementById('turnerStat').innerHTML = d.servo > 0 ? servoAngle + '°' : '<i class="icon fa-solid fa-arrow-up" id="turnerIcon" style="color: var(--idle);"></i>';
 
       const badge = document.getElementById('smartBadge');
       badge.textContent = 'Day ' + (d.currentDay + 1) + (d.stageLockdown ? ' - Lockdown Stage' : ' - Incubation Stage');
@@ -764,7 +768,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h_dc }));
         mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: 2.0 + l.a_dc }));
         mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: 4.0 + l.f_dc }));
-        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: (l.s == 1 ? 6.0 : (l.s == 2 ? 8.0 : 7.0)) }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.s * 6 }));
         
         mainChart.update('none');
       }
@@ -1072,7 +1076,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <label>Angle Adjustment (-40 to +40)</label>
       <div class="angle-control">
         <button type="button" onclick="adjustAngle(-5)">-</button>
-        <input type="number" id="angleAdjustment" min="-40" max="40" step="5" value="0" readonly onchange="save('angleAdjustment')">
+        <input type="number" id="angleAdjustment" min="-42" max="42" step="6" value="0" readonly onchange="save('angleAdjustment')">
         <button type="button" onclick="adjustAngle(5)">+</button>
       </div>
     </div>
@@ -1107,6 +1111,10 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
     });
+    db.version(4).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
+    }).upgrade(async () => { await db.logs.clear(); });
 
     async function mainLoop() {
       try {
@@ -1270,6 +1278,10 @@ const char DEXIE_HTML[] PROGMEM = R"rawliteral(
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
     });
+    db.version(4).stores({
+      logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
+      bootTimestamps: 'bootId, startUnix, duration'
+    }).upgrade(async () => { await db.logs.clear(); });
     new IndexedDBDebugBar(db, { position: 'left', isCollapsed: false });
   </script>
 </body>

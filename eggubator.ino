@@ -34,7 +34,7 @@ extern void updateAutoSim(bool heater, bool atomizer, bool fan);
 // Configurable timing (can be changed via web)
 unsigned long LOG_INTERVAL = 90000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
-unsigned long EGG_TURN_DURATION = 10000;
+unsigned long EGG_TURN_DURATION = 2000; // ms per step (each step = 6°)
 unsigned long PULSE_ON_TIME = 3000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
@@ -48,7 +48,7 @@ bool heaterState = false;
 bool atomizerState = false;
 bool fanState = false;
 bool servoEnabled = true;
-int servoPosition = 0; // -1 = -45deg, 0 = center, 1 = +45deg
+int servoPosition = 0; // Current servo step (0-31, each step = 6°)
 int heaterMode = AUTO;
 bool stageLockdown = false;  // false = incubation (1-18), true = lockdown (19-21)
 int atomizerMode = AUTO;
@@ -57,12 +57,15 @@ int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
-bool restingAt45 = true; // Servo position: true=45deg(left), false=135deg(right)
+uint8_t currentServoStep = 7; // Step 7 = 42° (min angle)
+bool sweeping = false;
+uint8_t sweepTargetStep = 22; // Target step during sweep
+unsigned long lastStepTime = 0;
+bool movingInStep = false;
+int stepStartAngle = 0;
+int stepTargetAngle = 0;
+unsigned long stepMoveStart = 0;
 int8_t angleAdjustment = 0;
-bool adjustingAngle = false;
-unsigned long angleAdjustStartTime = 0;
-int8_t angleAdjustFrom = 0;
-int8_t angleAdjustTo = 0;
 
 Servo myServo;
 
@@ -130,7 +133,7 @@ void loadSettings() {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = settings.turnInterval;
-    EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 10000;
+    EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 2000;
     angleAdjustment = settings.angleAdjustment;
     startTimestamp = settings.startTimestamp;
     
@@ -302,40 +305,37 @@ void handleControl() {
     } else if (device == "servo") {
       if (mode == "left") {
         servoEnabled = true;
-        restingAt45 = true;
-        int targetAngle = 45 - angleAdjustment;
-        targetAngle = constrain(targetAngle, 0, 180);
-        myServo.write(targetAngle);
-        myServo.attach(SERVO_PIN, 544, 2450);
-        delay(500);
+        int8_t adjSteps = angleAdjustment / 6;
+        currentServoStep = constrain(7 - adjSteps, 0, 31);
+        int angle = constrain(currentServoStep * 6, 0, 180);
+        int pulseWidth = map(angle, 0, 180, 544, 2450);
+        myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);
+        myServo.write(angle);
         myServo.detach();
-        server.send(200, "text/plain", "Servo moved to left (" + String(targetAngle) + ")");
+        sweeping = false;
+        server.send(200, "text/plain", "Servo moved to left (" + String(angle) + "°)");
       } else if (mode == "right") {
         servoEnabled = true;
-        restingAt45 = false;
-        int targetAngle = 135 + angleAdjustment;
-        targetAngle = constrain(targetAngle, 0, 180);
-        myServo.write(targetAngle);
-        myServo.attach(SERVO_PIN, 544, 2450);
-        delay(500);
+        int8_t adjSteps = angleAdjustment / 6;
+        currentServoStep = constrain(22 + adjSteps, 0, 31);
+        int angle = constrain(currentServoStep * 6, 0, 180);
+        int pulseWidth = map(angle, 0, 180, 544, 2450);
+        myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);
+        myServo.write(angle);
         myServo.detach();
-        server.send(200, "text/plain", "Servo moved to right (" + String(targetAngle) + ")");
-      } else if (mode == "center") {
-        servoEnabled = true;
-        myServo.write(90);
-        myServo.attach(SERVO_PIN, 544, 2450);
-        delay(500);
-        myServo.detach();
-        server.send(200, "text/plain", "Servo moved to center (90)");
+        sweeping = false;
+        server.send(200, "text/plain", "Servo moved to right (" + String(angle) + "°)");
       } else {
         servoMode = isKillOff ? KILL_OFF : AUTO;
         servoEnabled = !isKillOff;
         if (isKillOff) {
           servoPosition = 0;
-          myServo.write(90);
-          myServo.attach(SERVO_PIN, 544, 2450);
-          delay(500);
+          int angle = constrain(currentServoStep * 6, 0, 180);
+          int pulseWidth = map(angle, 0, 180, 544, 2450);
+          myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);
+          myServo.write(angle);
           myServo.detach();
+          sweeping = false;
         }
         server.send(200, "text/plain", device + " mode set to " + (isKillOff ? "OFF" : "AUTO"));
       }
@@ -407,18 +407,12 @@ void handleSettingsApi() {
     }
   } else if (server.hasArg("angleAdjustment")) {
     int8_t val = server.arg("angleAdjustment").toInt();
-    if (val >= -40 && val <= 40) {
-      // Start smooth 3-second transition with cubic easing
-      angleAdjustFrom = angleAdjustment;
-      angleAdjustTo = val;
-      angleAdjustStartTime = millis();
-      adjustingAngle = true;
-      myServo.attach(SERVO_PIN, 544, 2450);
+    if (val >= -42 && val <= 42) {
       angleAdjustment = val;
       saveSettings();
       server.send(200, "text/plain", "Angle adjustment set to " + String(val));
     } else {
-      server.send(400, "text/plain", "Invalid adjustment (must be -40 to 40)");
+      server.send(400, "text/plain", "Invalid adjustment (must be -42 to 42)");
     }
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();
@@ -429,12 +423,31 @@ void handleSettingsApi() {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
-      restingAt45 = true;
-      clearLogs(); // <-- Add this
+      clearLogs();
+      
+      // Smooth 3-second continuous sweep to minAngle
+      int8_t adjSteps = angleAdjustment / 6;
+      uint8_t targetStep = constrain(7 - adjSteps, 0, 31);
+      int targetAngle = targetStep * 6;
+      int startAngle = currentServoStep * 6;
+      
       myServo.attach(SERVO_PIN, 544, 2450);
-      myServo.write(90);
-      delay(500);
+      const unsigned long SWEEP_DURATION = 3000;
+      unsigned long sweepStart = millis();
+      while (millis() - sweepStart < SWEEP_DURATION) {
+        float progress = (float)(millis() - sweepStart) / SWEEP_DURATION;
+        int angle = startAngle + (targetAngle - startAngle) * progress;
+        angle = constrain(angle, 0, 180);
+        myServo.write(angle);
+        delay(10);
+        ESP.wdtFeed();
+      }
+      myServo.write(targetAngle);
+      delay(50);
       myServo.detach();
+      
+      currentServoStep = targetStep;
+      sweeping = false;
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
@@ -594,76 +607,88 @@ void autoControl() {
 // ============================================
 
 void servoInit() {
-  // Base: 45 (left) / 135 (right), angleAdjustment expands/reduces range
-  int initialAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-  initialAngle = constrain(initialAngle, 0, 180);
-  
-  myServo.write(initialAngle);
-  myServo.attach(SERVO_PIN, 544, 2450);
-  delay(500);
-  myServo.detach();
+  int angle = constrain(currentServoStep * 6, 0, 180);
+  int pulseWidth = map(angle, 0, 180, 544, 2450);
+  myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);   // Start PWM at correct pulse
+  myServo.write(angle);                                 // Safety re-assert
+  // No detach — servo holds position until first sweep
 }
 
 // ============================================
-// EGG TURNER - Manual smooth movement with standard Servo
+// EGG TURNER - Smooth step-based servo sweep
 // ============================================
 void rotateEggs() {
-  static bool turning = false;
-  static unsigned long turnStartTime = 0;
-  static int startAngle = 0;
-  static int targetAngle = 180;
-  
   // Disable egg turner during lockdown stage
   if (stageLockdown) {
     servoEnabled = false;
     servoPosition = 0;
     return;
   }
-  
-  // Trigger turn if interval elapsed
-  if (!turning && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
-    turning = true;
-    turnStartTime = millis();
-    
-    // Set start and target angles based on 45/135 base with angleAdjustment
-    startAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-    targetAngle = restingAt45 ? (135 + angleAdjustment) : (45 - angleAdjustment);
-    
-    // Attach and move to start position
-    myServo.attach(SERVO_PIN, 544, 2450);
-    myServo.write(startAngle);
-    
-    restingAt45 = !restingAt45;
-    
+
+  // Calculate step endpoints: base 42° (step 7) to 132° (step 22) ± angleAdjustment
+  int8_t adjSteps = angleAdjustment / 6;
+  uint8_t minStep = constrain(7 - adjSteps, 0, 31);
+  uint8_t maxStep = constrain(22 + adjSteps, 0, 31);
+
+  // Start turning if interval elapsed
+  if (!sweeping && !movingInStep && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
+    sweeping = true;
+    lastStepTime = millis();
     lastServoTurn = millis();
-  }
-  
-  if (turning) {
-    servoPosition = restingAt45 ? 2 : 1;
-    unsigned long elapsed = millis() - turnStartTime;
     
-    if (elapsed >= EGG_TURN_DURATION) {
-      // Turn finished - move to target and detach
-      myServo.write(targetAngle);
-      delay(100);
-      myServo.detach();
-      
-      turning = false;
-      servoPosition = restingAt45 ? 1 : 2;
-      lastServoTurn = millis();
-    } else {
-      // Smooth slow movement over 10 seconds using linear interpolation
+    // Target the furthest endpoint from current position
+    uint8_t distToMin = (currentServoStep >= minStep) ? (currentServoStep - minStep) : (minStep - currentServoStep);
+    uint8_t distToMax = (maxStep >= currentServoStep) ? (maxStep - currentServoStep) : (currentServoStep - maxStep);
+    sweepTargetStep = (distToMin >= distToMax) ? minStep : maxStep;
+    
+    // Attach servo for the sweep
+    myServo.attach(SERVO_PIN, 544, 2450);
+  }
+
+  if (sweeping) {
+    unsigned long now = millis();
+    
+    if (!movingInStep) {
+      // Check if sweep complete
+      if (currentServoStep == sweepTargetStep) {
+        delay(50);
+        myServo.detach();
+        sweeping = false;
+        lastServoTurn = now;
+      } else {
+        // Start a smooth 6-degree movement over EGG_TURN_DURATION
+        stepStartAngle = currentServoStep * 6;
+        if (currentServoStep < sweepTargetStep) {
+          currentServoStep++;
+        } else {
+          currentServoStep--;
+        }
+        stepTargetAngle = currentServoStep * 6;
+        stepMoveStart = now;
+        movingInStep = true;
+      }
+    }
+    
+    if (movingInStep) {
+      unsigned long elapsed = now - stepMoveStart;
       float progress = (float)elapsed / (float)EGG_TURN_DURATION;
       
-      // Cubic ease-in-out: elevator-like - start very slow, fast middle, end very slow
-      float easedProgress = progress < 0.5 ? 4 * progress * progress * progress : 1 - pow(-2 * progress + 2, 3) / 2;
-      
-      int currentAngle = startAngle + (targetAngle - startAngle) * easedProgress;
-      myServo.write(currentAngle);
+      if (progress >= 1.0f) {
+        // Movement complete - set final position
+        int angle = constrain(stepTargetAngle, 0, 180);
+        myServo.write(angle);
+        movingInStep = false;
+        lastStepTime = now;
+      } else {
+        // Linear interpolation from start to target angle
+        int angle = stepStartAngle + (int)((stepTargetAngle - stepStartAngle) * progress);
+        angle = constrain(angle, 0, 180);
+        myServo.write(angle);
+      }
     }
-  } else {
-    servoPosition = restingAt45 ? 1 : 2;
   }
+  
+  servoPosition = currentServoStep;
   
   if (!servoEnabled || servoMode == KILL_OFF) {
     servoPosition = 0;
@@ -729,6 +754,10 @@ void setup() {
   digitalWrite(RELAY_ATOMIZER, LOW);
   digitalWrite(RELAY_FAN, LOW);
 
+  // Hold servo pin LOW immediately to suppress SPI boot noise on GPIO14
+  pinMode(SERVO_PIN, OUTPUT);
+  digitalWrite(SERVO_PIN, LOW);
+
   initDHT();
 
   initRecovery();
@@ -772,9 +801,9 @@ void setup() {
   prepareBootTable();
   loadSettings();
 
-  bool recovered = false;
-  if (getLastServoPosition(&restingAt45)) {
-    recovered = true;
+  uint8_t recoveredStep = 7;
+  if (getLastServoPosition(&recoveredStep) && recoveredStep >= 3) {
+    currentServoStep = recoveredStep;
   }
 
   servoInit();
@@ -818,41 +847,13 @@ void loop() {
         currentTemp = t;
         currentHumidity = h;
         autoControl();
-        logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, servoPosition, LOG_INTERVAL);
+        logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, currentServoStep, LOG_INTERVAL);
       }
     lastReadTime = millis();
   }
 
   if (servoEnabled) {
     rotateEggs();
-  }
-
-  // Smooth angle adjustment transition with cubic easing (3 seconds)
-  if (adjustingAngle) {
-    unsigned long elapsed = millis() - angleAdjustStartTime;
-    const unsigned long ANGLE_ADJUST_DURATION = 3000;
-    
-    if (elapsed >= ANGLE_ADJUST_DURATION) {
-      // Transition complete
-      int targetAngle = restingAt45 ? (45 - angleAdjustment) : (135 + angleAdjustment);
-      targetAngle = constrain(targetAngle, 0, 180);
-      myServo.write(targetAngle);
-      delay(50);
-      myServo.detach();
-      adjustingAngle = false;
-    } else {
-      // Cubic ease-in-out
-      float progress = (float)elapsed / (float)ANGLE_ADJUST_DURATION;
-      float easedProgress = progress < 0.5 ? 4 * progress * progress * progress : 1 - pow(-2 * progress + 2, 3) / 2;
-      
-      // Interpolate angle adjustment value
-      int8_t currentAngleAdj = angleAdjustFrom + (angleAdjustTo - angleAdjustFrom) * easedProgress;
-      
-      // Calculate and apply servo angle
-      int currentServoAngle = restingAt45 ? (45 - currentAngleAdj) : (135 + currentAngleAdj);
-      currentServoAngle = constrain(currentServoAngle, 0, 180);
-      myServo.write(currentServoAngle);
-    }
   }
 
   if (millis() - lastOtaCheck > 3600000) {

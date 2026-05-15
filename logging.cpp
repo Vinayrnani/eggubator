@@ -172,20 +172,15 @@ void initLogging(uint8_t bootId) {
   }
 }
 
-bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, int servo, unsigned long forceInterval) {
+bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, uint8_t servoStep, unsigned long forceInterval) {
   uint8_t t_encoded = (uint8_t)((temp - 20.0) * 10.0 + 0.5);
   uint8_t h_encoded = (uint8_t)(hum + 0.5);
-
-  uint8_t turner_val = 0;
-  if (servo == 1) turner_val = 1;
-  else if (servo == 2) turner_val = 2;
-  else turner_val = 0;
 
   uint8_t states = 0;
   if (heater) states |= STATE_HEATER;
   if (atomizer) states |= STATE_ATOMIZER;
   if (fan) states |= STATE_FAN;
-  states = SET_TURNER(states, turner_val);
+  states = SET_TURNER(states, servoStep);
 
   bool significant = false;
   if (states != lastLoggedStates) significant = true;
@@ -426,7 +421,7 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
   }
 }
 
-bool getLastServoPosition(bool* out_restingAt45) {
+bool getLastServoPosition(uint8_t* out_step) {
   int s = currentSector;
   int o = currentOffset;
 
@@ -443,14 +438,9 @@ bool getLastServoPosition(bool* out_restingAt45) {
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
 
     if (entry.timeSec != 0xFFFFFFFF && entry.hum <= 100) {
-      uint8_t turner = GET_TURNER(entry.states);
-      if (turner == 1) {
-        *out_restingAt45 = true;
-        return true;
-      } else if (turner == 2) {
-        *out_restingAt45 = false;
-        return true;
-      }
+      uint8_t step = GET_TURNER(entry.states);
+      *out_step = step;
+      return true;
     }
 
     if (o == 0) {
