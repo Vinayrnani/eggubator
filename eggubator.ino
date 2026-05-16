@@ -845,8 +845,9 @@ void loop() {
         currentTemp = t;
         currentHumidity = h;
         autoControl();
-        logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, currentServoStep, LOG_INTERVAL);
       }
+      // Always log state (servo position, relays) even if DHT sensor unavailable
+      logData(currentTemp, currentHumidity, heaterState, atomizerState, fanState, currentServoStep, LOG_INTERVAL);
     lastReadTime = millis();
   }
 
