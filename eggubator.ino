@@ -106,6 +106,12 @@ struct DeviceSettings {
 // AUTO CONTROL LOGIC
 // ============================================
 
+void getServoEndpoints(uint8_t &minStep, uint8_t &maxStep) {
+  int8_t adjSteps = angleAdjustment / 6;
+  minStep = constrain(7 - adjSteps, 0, 31);
+  maxStep = constrain(22 + adjSteps, 0, 31);
+}
+
 void saveSettings() {
   DeviceSettings settings;
   EEPROM.get(EEPROM_SETTINGS_MAGIC, settings);
@@ -625,10 +631,9 @@ void rotateEggs() {
     return;
   }
 
-  // Calculate step endpoints: base 42° (step 7) to 132° (step 22) ± angleAdjustment
-  int8_t adjSteps = angleAdjustment / 6;
-  uint8_t minStep = constrain(7 - adjSteps, 0, 31);
-  uint8_t maxStep = constrain(22 + adjSteps, 0, 31);
+  // Calculate step endpoints
+  uint8_t minStep, maxStep;
+  getServoEndpoints(minStep, maxStep);
 
   // Start turning if interval elapsed
   if (!sweeping && !movingInStep && (millis() - lastServoTurn > EGG_TURN_INTERVAL)) {
@@ -658,6 +663,11 @@ void rotateEggs() {
   }
 
   if (sweeping) {
+    // Ensure servo is attached if interrupted sweep resumed
+    if (!myServo.attached()) {
+      myServo.attach(SERVO_PIN, 544, 2450);
+    }
+    
     unsigned long now = millis();
     
     if (!movingInStep) {
@@ -822,6 +832,14 @@ void setup() {
       isMovingTowardsMax = false;
     } else if (recoveredSteps[0] < recoveredSteps[1] && recoveredSteps[1] < recoveredSteps[2]) {
       isMovingTowardsMax = true;
+    }
+    
+    // Resume interrupted sweep
+    uint8_t minStep, maxStep;
+    getServoEndpoints(minStep, maxStep);
+    if (currentServoStep > minStep && currentServoStep < maxStep) {
+      sweeping = true;
+      sweepTargetStep = isMovingTowardsMax ? maxStep : minStep;
     }
   }
 
