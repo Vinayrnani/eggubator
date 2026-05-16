@@ -1058,18 +1058,12 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       </select>
     </div>
     <div class="form-group">
-      <label>Egg Sweep Duration</label>
+      <label>Egg Rotation Speed</label>
       <select id="eggTurnDuration" class="form-select" onchange="save('eggTurnDuration')">
-        <option value="1">1 sec</option>
-        <option value="2">2 sec</option>
-        <option value="3">3 sec</option>
-        <option value="4">4 sec</option>
-        <option value="5">5 sec</option>
-        <option value="6">6 sec</option>
-        <option value="7">7 sec</option>
-        <option value="8">8 sec</option>
-        <option value="9">9 sec</option>
-        <option value="10">10 sec</option>
+        <option value="1">Fast</option>
+        <option value="2">Medium</option>
+        <option value="3">Slow</option>
+        <option value="4">Slowest</option>
       </select>
     </div>
     <div class="form-group">
