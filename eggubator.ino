@@ -608,9 +608,7 @@ void autoControl() {
 
 void servoInit() {
   int angle = constrain(currentServoStep * 6, 0, 180);
-  int pulseWidth = map(angle, 0, 180, 544, 2450);
-  myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);   // Start PWM at correct pulse
-  myServo.write(angle);                                 // Safety re-assert
+  myServo.attach(SERVO_PIN, 544, 2450, angle);  // <200 = angle mode in Servo::write()
   // No detach — servo holds position until first sweep
 }
 
@@ -758,17 +756,11 @@ void setup() {
   pinMode(SERVO_PIN, OUTPUT);
   digitalWrite(SERVO_PIN, LOW);
 
-  initDHT();
-
-  initRecovery();
-
   connectWiFi();
 
   // Start mDNS responder for EGGubator.local
   if (MDNS.begin("EGGubator")) {
   }
-
-  markBootSuccess();
 
 
 // Setup web server
@@ -791,15 +783,21 @@ void setup() {
   server.begin();
   
   
+  initRecovery();
+
   uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
   bootId++;
   EEPROM.write(EEPROM_BOOT_ID, bootId);
   EEPROM.commit();
 
+  markBootSuccess();
+
   initSectorPointers();
-  initLogging(bootId);
   prepareBootTable();
+  initLogging(bootId);
   loadSettings();
+
+  initDHT();
 
   uint8_t recoveredStep = 7;
   if (getLastServoPosition(&recoveredStep) && recoveredStep >= 3) {
