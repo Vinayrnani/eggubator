@@ -133,7 +133,7 @@ void loadSettings() {
   if (settings.magic == SETTINGS_MAGIC_VAL) {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
-    EGG_TURN_INTERVAL = settings.turnInterval;
+    EGG_TURN_INTERVAL = (settings.turnInterval >= 3600000) ? settings.turnInterval : 7200000;
     EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 2000;
     angleAdjustment = settings.angleAdjustment;
     startTimestamp = settings.startTimestamp;
@@ -393,7 +393,8 @@ void handleSettingsApi() {
   } else if (server.hasArg("eggTurnInterval")) {
     unsigned long val = server.arg("eggTurnInterval").toInt();
     EGG_TURN_INTERVAL = val;
-    if (val != 20000) {  // Don't save 20sec to EEPROM (only for mock/auto mode testing)
+    // Only save if interval is >= 1 hour (3600000 ms)
+    if (val >= 3600000) {
       saveSettings();
     }
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
