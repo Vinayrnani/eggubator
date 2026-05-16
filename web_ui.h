@@ -1229,10 +1229,13 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       }
     }
     
-    function startNewBatch() {
+    async function startNewBatch() {
       if(confirm('WARNING: This will reset the incubator to Day 0. Are you sure?')) {
+        await db.logs.clear();
+        await db.bootTimestamps.clear();
         const unixNow = Math.floor(Date.now() / 1000);
-        fetch(`/settings/api?action=newBatch&timestamp=${unixNow}`).then(() => fetch('/status'));
+        await fetch(`/settings/api?action=newBatch&timestamp=${unixNow}`);
+        location.reload();
       }
     }
 
