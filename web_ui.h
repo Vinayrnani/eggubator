@@ -423,6 +423,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       } else {
          sd.textContent = 'Unknown';
       }
+
+      // Update Day buttons state
+      const btnDec = document.getElementById('btnDec');
+      const btnInc = document.getElementById('btnInc');
+      if (btnDec) btnDec.disabled = (d.currentDay <= 0);
+      if (btnInc) btnInc.disabled = (d.currentDay >= 20); // 0-indexed Day 21 is index 20
       
       calculateAverages();
       calculateStability();
@@ -1017,8 +1023,8 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <div class="sub">Started: <span id="startDateVal">--</span></div>
     </div>
     <div class="btn-group">
-      <button class="btn btn-outline" onclick="adjustDay(-1)">- 1 Day</button>
-      <button class="btn btn-outline" onclick="adjustDay(1)">+ 1 Day</button>
+      <button id="btnDec" class="btn btn-outline" onclick="adjustDay(-1)">- 1 Day</button>
+      <button id="btnInc" class="btn btn-outline" onclick="adjustDay(1)">+ 1 Day</button>
     </div>
     <button class="btn btn-primary" style="margin-top:0;" onclick="startNewBatch()">Start New Batch (Day 0)</button>
   </div>
@@ -1219,7 +1225,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
     
     function adjustDay(dir) {
       if(confirm('Are you sure you want to ' + (dir > 0 ? 'add' : 'subtract') + ' 1 day?')) {
-        fetch(`/settings/api?action=adjustDay&dir=${dir}`).then(() => fetch('/status'));
+        fetch(`/settings/api?action=adjustDay&dir=${dir}`).then(() => fetch('/status').then(r=>r.json()).then(d=>updateLiveData(d)));
       }
     }
     

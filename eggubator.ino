@@ -150,7 +150,7 @@ void loadSettings() {
       PULSE_ON_TIME = 3000;
     }
     
-    stageLockdown = (getCurrentDay() >= 18);
+    stageLockdown = (getCurrentDay() >= 17); // 0-indexed Day 18 is index 17
 
     if (stageLockdown) {
       TARGET_TEMP = 37.5;
@@ -843,7 +843,7 @@ void loop() {
   unsigned long currentMillis = millis();
 
   {
-    bool newStageLockdown = (getCurrentDay() >= 18);
+    bool newStageLockdown = (getCurrentDay() >= 17); // 0-indexed Day 18 is index 17
     if (newStageLockdown != stageLockdown) {
       stageLockdown = newStageLockdown;
       if (stageLockdown) {
