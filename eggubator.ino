@@ -849,7 +849,7 @@ void loop() {
       if (stageLockdown) {
         TARGET_TEMP = 37.5;
         TARGET_HUMIDITY = 65.0;
-        servoEnabled = false;
+        // servoEnabled = false; // Removed to allow rotateEggs to handle smooth move to 90deg
       } else {
         TARGET_TEMP = 37.5;
         TARGET_HUMIDITY = 55.0;
