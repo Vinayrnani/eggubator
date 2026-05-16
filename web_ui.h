@@ -359,10 +359,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 }
               }
             },
-            yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, ticks: { padding: 2 } },
-            yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.35; s.max += r*0.05; }, title: { display: false }, grid: { display: false }, ticks: { padding: 2 } },
+            yTemp: { type: 'linear', position: 'left', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.30; s.max += r*0.10; }, title: { display: false }, ticks: { padding: 2 } },
+            yHum: { type: 'linear', position: 'right', afterDataLimits: (s) => { let r = s.max - s.min; if(r===0)r=1; s.min -= r*0.30; s.max += r*0.10; }, title: { display: false }, grid: { display: false }, ticks: { padding: 2 } },
             yControls: { type: 'linear', position: 'right', min: 0, max: 40, display: false },
-            yTurner: { type: 'linear', position: 'right', min: 0, max: 180, display: false, grid: { drawOnChartArea: false } }
+            yTurner: { type: 'linear', position: 'right', min: 0, max: 1800, display: false, grid: { drawOnChartArea: false } }
           },
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
@@ -382,7 +382,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                   if (idx === 2) return 'Heater: ' + (isStepped ? (val > 0 ? 'ON' : 'OFF') : Math.round(val * 100) + '%');
                   if (idx === 3) return 'Atomizer: ' + (isStepped ? (val > 2 ? 'ON' : 'OFF') : Math.round((val - 2) * 100) + '%');
                   if (idx === 4) return 'Fan: ' + (isStepped ? (val > 4 ? 'ON' : 'OFF') : Math.round((val - 4) * 100) + '%');
-                  if (idx === 5) return 'Turner: ' + Math.round(context.raw.y) + '°';
+                  if (idx === 5) return 'Turner: ' + Math.round(context.raw.y - 1620) + '°';
                   return null;
                 },
                 filter: function(context) {
@@ -774,7 +774,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         mainChart.data.datasets[2].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.h_dc }));
         mainChart.data.datasets[3].data = logs.map(l => ({ x: (l.t - now)/1000, y: 2.0 + l.a_dc }));
         mainChart.data.datasets[4].data = logs.map(l => ({ x: (l.t - now)/1000, y: 4.0 + l.f_dc }));
-        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: l.s * 6 }));
+        mainChart.data.datasets[5].data = logs.map(l => ({ x: (l.t - now)/1000, y: (l.s * 6) + 1620 }));
         
         mainChart.update('none');
       }
