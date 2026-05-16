@@ -433,29 +433,10 @@ void handleSettingsApi() {
       startTimestamp = (uint32_t)server.arg("timestamp").toInt();
       clearLogs();
       
-      // Smooth 3-second continuous sweep to minAngle
-      int8_t adjSteps = angleAdjustment / 6;
-      uint8_t targetStep = constrain(7 - adjSteps, 0, 31);
-      int targetAngle = targetStep * 6;
-      int startAngle = currentServoStep * 6;
+      // Non-blocking move to 90 degrees (step 15)
+      sweeping = true;
+      sweepTargetStep = 15;
       
-      myServo.attach(SERVO_PIN, 544, 2450, currentServoStep * 6);
-      const unsigned long SWEEP_DURATION = 3000;
-      unsigned long sweepStart = millis();
-      while (millis() - sweepStart < SWEEP_DURATION) {
-        float progress = (float)(millis() - sweepStart) / SWEEP_DURATION;
-        int angle = startAngle + (targetAngle - startAngle) * progress;
-        angle = constrain(angle, 0, 180);
-        myServo.write(angle);
-        delay(10);
-        ESP.wdtFeed();
-      }
-      myServo.write(targetAngle);
-      delay(50);
-      myServo.detach();
-      
-      currentServoStep = targetStep;
-      sweeping = false;
       saveSettings();
       server.send(200, "text/plain", "New batch started");
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
@@ -626,9 +607,14 @@ void servoInit() {
 void rotateEggs() {
   // Disable egg turner during lockdown stage
   if (stageLockdown) {
-    servoEnabled = false;
-    servoPosition = 0;
-    return;
+    if (currentServoStep != 15) {
+      sweeping = true;
+      sweepTargetStep = 15;
+    } else {
+      servoEnabled = false;
+      servoPosition = 0;
+      return;
+    }
   }
 
   // Calculate step endpoints

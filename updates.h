@@ -8,7 +8,7 @@
 
 #define FIRMWARE_URL "http://YOUR_SERVER/firmware.bin"
 #define VERSION_URL "http://YOUR_SERVER/version.txt"
-#define FIRMWARE_VERSION "1.3.21"
+#define FIRMWARE_VERSION "1.3.22"
 
 extern ESP8266HTTPUpdateServer httpUpdater;
 
