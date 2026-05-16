@@ -439,7 +439,7 @@ void handleSettingsApi() {
       int targetAngle = targetStep * 6;
       int startAngle = currentServoStep * 6;
       
-      myServo.attach(SERVO_PIN, 544, 2450);
+      myServo.attach(SERVO_PIN, 544, 2450, currentServoStep * 6);
       const unsigned long SWEEP_DURATION = 3000;
       unsigned long sweepStart = millis();
       while (millis() - sweepStart < SWEEP_DURATION) {
@@ -658,14 +658,14 @@ void rotateEggs() {
       }
     }
     
-    // Attach servo for the sweep
-    myServo.attach(SERVO_PIN, 544, 2450);
+    // Attach servo for the sweep at current position
+    myServo.attach(SERVO_PIN, 544, 2450, currentServoStep * 6);
   }
 
   if (sweeping) {
     // Ensure servo is attached if interrupted sweep resumed
     if (!myServo.attached()) {
-      myServo.attach(SERVO_PIN, 544, 2450);
+      myServo.attach(SERVO_PIN, 544, 2450, currentServoStep * 6);
     }
     
     unsigned long now = millis();
