@@ -59,6 +59,7 @@ unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
 uint8_t currentServoStep = 7; // Step 7 = 42° (min angle)
 bool sweeping = false;
+bool isMovingTowardsMax = true;
 uint8_t sweepTargetStep = 22; // Target step during sweep
 unsigned long lastStepTime = 0;
 bool movingInStep = false;
@@ -634,10 +635,22 @@ void rotateEggs() {
     lastStepTime = millis();
     lastServoTurn = millis();
     
-    // Target the furthest endpoint from current position
-    uint8_t distToMin = (currentServoStep >= minStep) ? (currentServoStep - minStep) : (minStep - currentServoStep);
-    uint8_t distToMax = (maxStep >= currentServoStep) ? (maxStep - currentServoStep) : (currentServoStep - maxStep);
-    sweepTargetStep = (distToMin >= distToMax) ? minStep : maxStep;
+    // Target the endpoint based on current direction
+    if (isMovingTowardsMax) {
+      sweepTargetStep = maxStep;
+      // If we already hit max, flip direction
+      if (currentServoStep >= maxStep) {
+        sweepTargetStep = minStep;
+        isMovingTowardsMax = false;
+      }
+    } else {
+      sweepTargetStep = minStep;
+      // If we already hit min, flip direction
+      if (currentServoStep <= minStep) {
+        sweepTargetStep = maxStep;
+        isMovingTowardsMax = true;
+      }
+    }
     
     // Attach servo for the sweep
     myServo.attach(SERVO_PIN, 544, 2450);
@@ -799,9 +812,16 @@ void setup() {
 
   initDHT();
 
-  uint8_t recoveredStep = 7;
-  if (getLastServoPosition(&recoveredStep) && recoveredStep >= 3) {
-    currentServoStep = recoveredStep;
+  uint8_t recoveredSteps[3] = {7, 7, 7};
+  if (getLastServoPositions(recoveredSteps, 3)) {
+    currentServoStep = recoveredSteps[0];
+    // Simple direction detection: if pos0 > pos1 > pos2, moving towards min.
+    // If pos0 < pos1 < pos2, moving towards max.
+    if (recoveredSteps[0] > recoveredSteps[1] && recoveredSteps[1] > recoveredSteps[2]) {
+      isMovingTowardsMax = false;
+    } else if (recoveredSteps[0] < recoveredSteps[1] && recoveredSteps[1] < recoveredSteps[2]) {
+      isMovingTowardsMax = true;
+    }
   }
 
   servoInit();

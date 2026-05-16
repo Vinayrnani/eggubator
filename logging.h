@@ -62,6 +62,6 @@ int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32
 int getTotalLogs();
 void clearLogs();
 void writeCorrectionLog(uint8_t bootId, uint32_t duration);
-bool getLastServoPosition(uint8_t* out_step);
+bool getLastServoPositions(uint8_t* out_steps, int count);
 
 #endif

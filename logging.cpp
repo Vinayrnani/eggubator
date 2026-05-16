@@ -421,7 +421,7 @@ void writeCorrectionLog(uint8_t bootId, uint32_t duration) {
   }
 }
 
-bool getLastServoPosition(uint8_t* out_step) {
+bool getLastServoPositions(uint8_t* out_steps, int count) {
   int s = currentSector;
   int o = currentOffset;
 
@@ -432,15 +432,15 @@ bool getLastServoPosition(uint8_t* out_step) {
     o--;
   }
 
-  for (int scanned = 0; scanned < 100; scanned++) {
+  int found = 0;
+  for (int scanned = 0; scanned < 200 && found < count; scanned++) {
     uint32_t addr = FLASH_LOG_START + (s * FLASH_SECTOR_SIZE) + (o * sizeof(LogEntry));
     LogEntry entry;
     ESP.flashRead(addr, (uint32_t*)&entry, sizeof(LogEntry));
 
     if (entry.timeSec != 0xFFFFFFFF && entry.hum <= 100) {
-      uint8_t step = GET_TURNER(entry.states);
-      *out_step = step;
-      return true;
+      out_steps[found] = GET_TURNER(entry.states);
+      found++;
     }
 
     if (o == 0) {
@@ -451,5 +451,5 @@ bool getLastServoPosition(uint8_t* out_step) {
     }
   }
 
-  return false;
+  return (found > 0);
 }
