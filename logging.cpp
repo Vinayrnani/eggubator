@@ -117,29 +117,33 @@ void initLogging(uint8_t bootId) {
       totalLogsCached++;
     }
 
-    int foundIdx = -1;
-    for (int i = 0; i < bootSessionCount; i++) {
-      if (bootSessions[i].bootId == entry.bootId) {
-        foundIdx = i;
-        break;
+    // The first entry of the start sector is a meta marker (hum=0xFE) whose
+    // bootId field carries a stale value after clearLogs(). Skip it.
+    if (s != startSector || o != 0) {
+      int foundIdx = -1;
+      for (int i = 0; i < bootSessionCount; i++) {
+        if (bootSessions[i].bootId == entry.bootId) {
+          foundIdx = i;
+          break;
+        }
       }
-    }
 
-    if (foundIdx == -1) {
-      if (bootSessionCount >= bootSessionCapacity) {
-        bootSessionCapacity *= 2;
-        bootSessions = (BootSession*)realloc(bootSessions, bootSessionCapacity * sizeof(BootSession));
-      }
-      bootSessions[bootSessionCount].bootId = entry.bootId;
-      bootSessions[bootSessionCount].sector = s;
-      bootSessions[bootSessionCount].offset = o;
-      bootSessions[bootSessionCount].duration = entry.timeSec;
-      bootSessions[bootSessionCount].startUnix = 0;
-      foundIdx = bootSessionCount;
-      bootSessionCount++;
-    } else {
-      if (entry.timeSec > bootSessions[foundIdx].duration) {
-        bootSessions[foundIdx].duration = entry.timeSec;
+      if (foundIdx == -1) {
+        if (bootSessionCount >= bootSessionCapacity) {
+          bootSessionCapacity *= 2;
+          bootSessions = (BootSession*)realloc(bootSessions, bootSessionCapacity * sizeof(BootSession));
+        }
+        bootSessions[bootSessionCount].bootId = entry.bootId;
+        bootSessions[bootSessionCount].sector = s;
+        bootSessions[bootSessionCount].offset = o;
+        bootSessions[bootSessionCount].duration = entry.timeSec;
+        bootSessions[bootSessionCount].startUnix = 0;
+        foundIdx = bootSessionCount;
+        bootSessionCount++;
+      } else {
+        if (entry.timeSec > bootSessions[foundIdx].duration) {
+          bootSessions[foundIdx].duration = entry.timeSec;
+        }
       }
     }
 
