@@ -217,6 +217,7 @@ void handleStatus() {
                 ",\"currentDay\":" + String(getCurrentDay()) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
 
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.send(200, "application/json", json);
 }
 
@@ -280,6 +281,7 @@ json += ",\"totalLogs\":" + String(getTotalLogs());
   json += ",\"sentCount\":" + String(sentCount) +
           ",\"logs\":\"" + logHex + "\"}";
   
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.send(200, "application/json", json);
 }
 
@@ -438,7 +440,11 @@ void handleSettingsApi() {
       sweepTargetStep = 15;
       
       saveSettings();
+      EEPROM.write(EEPROM_BOOT_ID, 0);
+      EEPROM.commit();
       server.send(200, "text/plain", "New batch started");
+      delay(100);
+      ESP.restart();
     } else if (action == "syncTime" && server.hasArg("timestamp")) {
       uint32_t currentUnix = (uint32_t)server.arg("timestamp").toInt();
       if (currentUnix > 0) {
@@ -487,6 +493,7 @@ void handleSettingsApi() {
                   ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                   ",\"currentDay\":" + String(getCurrentDay()) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send(200, "application/json", json);
   }
 }

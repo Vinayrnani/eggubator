@@ -65,6 +65,7 @@ void handleTimestamps() {
               ",\"startUnix\":" + String(bootSessions[i].startUnix) + "}";
     }
     json += "]}";
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send(200, "application/json", json);
     return;
   }
