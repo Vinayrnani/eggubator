@@ -684,24 +684,30 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (progressEl) progressEl.textContent = 'SAT sync complete';
     }
 
-    async function checkAutoReset() {
-      // Step 0: SAT sync first
-      await syncSAT();
+     async function checkAutoReset() {
+       // Prevent double newBatch call after startNewBatch() reload
+       if (sessionStorage.getItem('batchJustStarted') === '1') {
+         sessionStorage.removeItem('batchJustStarted');
+         return; // Skip auto-reset - user just started a new batch
+       }
+       
+       // Step 0: SAT sync first
+       await syncSAT();
 
-      const lastLog = await db.logs.orderBy('t').last();
-      const unixNow = Math.floor(Date.now() / 1000);
-      
-      if (lastLog) {
-        const gap = Date.now() - lastLog.t;
-        if (gap > 259200000) { // 3 days in ms
-          console.log("Incubator was off for >3 days. Resetting to Day 1.");
-          await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-        }
-      } else {
-        // No logs at all, maybe first run?
-        await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-      }
-    }
+       const lastLog = await db.logs.orderBy('t').last();
+       const unixNow = Math.floor(Date.now() / 1000);
+       
+       if (lastLog) {
+         const gap = Date.now() - lastLog.t;
+         if (gap > 259200000) { // 3 days in ms
+           console.log("Incubator was off for >3 days. Resetting to Day 1.");
+           await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+         }
+       } else {
+         // No logs at all, maybe first run?
+         await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+       }
+     }
 
     async function updateChart() {
       const now = Date.now();
@@ -1229,15 +1235,21 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       }
     }
     
-    async function startNewBatch() {
-      if(confirm('WARNING: This will reset the incubator to Day 0. Are you sure?')) {
-        await db.logs.clear();
-        await db.bootTimestamps.clear();
-        const unixNow = Math.floor(Date.now() / 1000);
-        await fetch(`/settings/api?action=newBatch&timestamp=${unixNow}`);
-        location.reload();
-      }
+async function startNewBatch() {
+  if(confirm('WARNING: This will reset the incubator to Day 0. Are you sure?')) {
+    await db.logs.clear();
+    await db.bootTimestamps.clear();
+    const unixNow = Math.floor(Date.now() / 1000);
+    try {
+      await fetch(`/settings/api?action=newBatch&timestamp=${unixNow}`);
+    } catch(e) {
+      console.log('ESP rebooting after new batch...');
     }
+    sessionStorage.setItem('batchJustStarted', '1');
+    await new Promise(r => setTimeout(r, 3000)); // Wait for ESP to reboot
+    location.reload();
+  }
+}
 
     function reboot() { 
       if(confirm('Reboot device?')) {

@@ -57,7 +57,7 @@ int servoMode = AUTO;
 unsigned long lastReadTime = 0;
 unsigned long lastOtaCheck = 0;
 unsigned long lastServoTurn = 0;
-uint8_t currentServoStep = 7; // Step 7 = 42° (min angle)
+  uint8_t currentServoStep = 15; // Step 15 = 90° (center position)
 bool sweeping = false;
 bool isMovingTowardsMax = true;
 uint8_t sweepTargetStep = 22; // Target step during sweep
@@ -809,7 +809,7 @@ void setup() {
 
   initDHT();
 
-  uint8_t recoveredSteps[3] = {7, 7, 7};
+  uint8_t recoveredSteps[3] = {15, 15, 15};
   if (getLastServoPositions(recoveredSteps, 3)) {
     currentServoStep = recoveredSteps[0];
     // Simple direction detection: if pos0 > pos1 > pos2, moving towards min.
