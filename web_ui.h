@@ -705,7 +705,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
          }
        } else {
          // No logs at all, maybe first run?
-         await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+         // await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
        }
      }
 
