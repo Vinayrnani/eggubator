@@ -244,7 +244,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     db.version(4).stores({
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
-    }).upgrade(async () => { await db.logs.clear(); });
+    }).upgrade(async () => { await db.logs.clear(); await db.bootTimestamps.clear();});
 
     const bootStartCache = {};
 
@@ -1120,7 +1120,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
     db.version(4).stores({
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
-    }).upgrade(async () => { await db.logs.clear(); });
+    }).upgrade(async () => { await db.logs.clear(); await db.bootTimestamps.clear();});
 
     async function mainLoop() {
       try {
