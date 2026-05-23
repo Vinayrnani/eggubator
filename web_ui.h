@@ -940,21 +940,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           console.log('Purged', invalidCount, 'invalid entries with bad timestamps');
         }
 
-        // Step 3: Check if we already have logs in Dexie — skip full pagination if so
+        // Step 3: Catch up — paginate from last known position (or start) until current
         const existingCount = await db.logs.count();
         if (existingCount > 0) {
-          initialLoadDone = true;
           const lastLog = await db.logs.orderBy('t').reverse().limit(1).toArray();
           if (lastLog.length > 0) {
             latestBootId = lastLog[0].bootId;
             latestTimeSec = lastLog[0].timeSec;
-            console.log('Dexie has ' + existingCount + ' logs, skipping full re-fetch. Resuming from bootId=' + latestBootId + ' timeSec=' + latestTimeSec);
+            console.log('Dexie has ' + existingCount + ' logs. Catching up from bootId=' + latestBootId + ' timeSec=' + latestTimeSec);
           }
-          hideOverlay();
-        } else {
-          // No logs in Dexie — do full pagination from the start
-          await fetchNextBatch(0, 0);
         }
+        await fetchNextBatch(latestBootId, latestTimeSec);
+        // fetchNextBatch sets initialLoadDone=true and hides overlay when done
 
         // Step 4: Check if auto-reset needed
         await checkAutoReset();
