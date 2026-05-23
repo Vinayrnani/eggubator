@@ -697,16 +697,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
        const lastLog = await db.logs.orderBy('t').last();
        const unixNow = Math.floor(Date.now() / 1000);
        
-       if (lastLog) {
-         const gap = Date.now() - lastLog.t;
-         if (gap > 259200000) { // 3 days in ms
-           console.log("Incubator was off for >3 days. Resetting to Day 1.");
-           await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-         }
-       } else {
-         // No logs at all, maybe first run?
-         // await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
-       }
+        if (lastLog) {
+          const gap = Date.now() - lastLog.t;
+          if (gap > 259200000) { // 3 days in ms
+            console.log("Incubator was off for >3 days. Asking user to confirm reset.");
+            if (confirm("Incubator appears to have been off for more than 3 days. Do you want to reset to Day 1?")) {
+              await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+            }
+          }
+        } else {
+          // No logs at all, maybe first run?
+          // await fetch('/settings/api?action=newBatch&timestamp=' + unixNow);
+        }
      }
 
     async function updateChart() {
