@@ -377,6 +377,10 @@ void clearLogs() {
   
   // Erase new sector
   ESP.flashEraseSector((FLASH_LOG_START + (currentSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
+
+  // Erase next sector too — guarantees initSectorPointers finds empty sentinel
+  uint16_t sentinelSector = (currentSector + 1) % FLASH_NUM_SECTORS;
+  ESP.flashEraseSector((FLASH_LOG_START + (sentinelSector * FLASH_SECTOR_SIZE)) / FLASH_SECTOR_SIZE);
   
   // Initialize with meta entry
   writeMetaEntry();
