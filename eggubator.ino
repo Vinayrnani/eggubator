@@ -19,6 +19,7 @@
 
 #include "updates.h"
 #include "web_ui.h"
+#include "sector_viewer.h"
 #include "sat_manager.h"
 
 extern bool useMockSensor;
@@ -170,6 +171,81 @@ void loadSettings() {
 // ============================================
 // WEB SERVER HANDLERS
 // ============================================
+void handleSectorViewerPage() {
+  server.send(200, "text/html; charset=utf-8", SECTOR_VIEWER_HTML);
+}
+
+void handleSectorHex() {
+  if (server.method() == HTTP_POST) {
+    // Write sector
+    if (!server.hasArg("sector")) {
+      server.send(400, "text/plain", "Missing sector parameter");
+      return;
+    }
+    int sector = server.arg("sector").toInt();
+    if (sector < 0 || sector >= FLASH_NUM_SECTORS) {
+      server.send(400, "text/plain", "Invalid sector");
+      return;
+    }
+    if (!server.hasArg("plain")) {
+      server.send(400, "text/plain", "Missing body");
+      return;
+    }
+    String hexData = server.arg("plain");
+    int byteCount = hexData.length() / 2;
+    if (byteCount > FLASH_SECTOR_SIZE) byteCount = FLASH_SECTOR_SIZE;
+
+    uint8_t* buffer = (uint8_t*)malloc(FLASH_SECTOR_SIZE);
+    if (!buffer) {
+      server.send(500, "text/plain", "Out of memory");
+      return;
+    }
+    // Fill with 0xFF first (erased flash state)
+    memset(buffer, 0xFF, FLASH_SECTOR_SIZE);
+    // Decode hex string into buffer
+    for (int i = 0; i < byteCount; i++) {
+      char hi = hexData[i * 2];
+      char lo = hexData[i * 2 + 1];
+      uint8_t b = 0;
+      if (hi >= '0' && hi <= '9') b = (hi - '0') << 4;
+      else if (hi >= 'a' && hi <= 'f') b = (hi - 'a' + 10) << 4;
+      else if (hi >= 'A' && hi <= 'F') b = (hi - 'A' + 10) << 4;
+      if (lo >= '0' && lo <= '9') b |= (lo - '0');
+      else if (lo >= 'a' && lo <= 'f') b |= (lo - 'a' + 10);
+      else if (lo >= 'A' && lo <= 'F') b |= (lo - 'A' + 10);
+      buffer[i] = b;
+    }
+    // Erase sector then write
+    uint32_t flashAddr = FLASH_LOG_START + (sector * FLASH_SECTOR_SIZE);
+    uint32_t sectorId = flashAddr / FLASH_SECTOR_SIZE;
+    ESP.flashEraseSector(sectorId);
+    ESP.flashWrite(flashAddr, (uint32_t*)buffer, FLASH_SECTOR_SIZE);
+    free(buffer);
+    server.send(200, "text/plain", "OK");
+    return;
+  }
+
+  // GET - read sector
+  if (!server.hasArg("sector")) {
+    server.send(400, "text/plain", "Missing sector parameter");
+    return;
+  }
+  int sector = server.arg("sector").toInt();
+  if (sector < 0 || sector >= FLASH_NUM_SECTORS) {
+    server.send(400, "text/plain", "Invalid sector");
+    return;
+  }
+  uint8_t* buffer = (uint8_t*)malloc(FLASH_SECTOR_SIZE);
+  if (!buffer) {
+    server.send(500, "text/plain", "Out of memory");
+    return;
+  }
+  ESP.flashRead(FLASH_LOG_START + (sector * FLASH_SECTOR_SIZE), (uint32_t*)buffer, FLASH_SECTOR_SIZE);
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "application/octet-stream", (const char*)buffer, FLASH_SECTOR_SIZE);
+  free(buffer);
+}
+
 void handleRoot() {
   server.send(200, "text/html; charset=utf-8", INDEX_HTML);
 }
@@ -751,6 +827,8 @@ void setup() {
 
 // Setup web server
   server.on("/", handleRoot);
+  server.on("/sector_viewer", handleSectorViewerPage);
+  server.on("/api/sector_hex", handleSectorHex);
   server.on("/settings", handleSettingsPage);
   server.on("/dexie", handleDexiePage);
   server.on("/status", handleStatus);
