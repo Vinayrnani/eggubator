@@ -408,17 +408,44 @@ Browser                    ESP8266
   │                           │
   │◄─── sync response ────────│
   │                           │
+  │  (save to Dexie           │
+  │   bootTimestamps,         │
+  │   load bootStartCache)    │
+  │                           │
+  │──── syncTime ────────────►│
+  │    (corrects ESP's        │
+  │     startUnix for         │
+  │     current boot)         │
+  │                           │
+  │──── GET /timestamps ─────►│
+  │    (re-fetch to update    │
+  │     bootStartCache with   │
+  │     corrected values)     │
+  │                           │
+  │◄─── updated timestamps ───│
+  │                           │
+  │  Update bootStartCache    │
+  │  with corrected values    │
+  │                           │
   │  Update UI with correct  │
   │  absolute timestamps     │
 ```
+
+**Critical Detail:** After syncTime corrects the ESP's boot startUnix, the browser
+must re-fetch /timestamps to update its local bootStartCache. Without this
+re-fetch, bootStartCache still holds the stale startUnix=0 for the current boot,
+causing decodeLogs() to compute timestamps near epoch 0 (1970) — particularly
+after a new batch where the index page is loaded for the first time.
 
 #### 2. First Connection (No Browser History)
 
 If browser has NO previous logs (first connection):
 
-1. ESP provides its assumed timestamps
-2. Browser displays ESP's time
-3. If another browser with history connects later, it propagates correct timestamps
+1. ESP provides its assumed timestamps (startUnix=0 for current boot)
+2. Browser syncs time via syncTime, which corrects the current boot's startUnix
+3. Browser re-fetches /timestamps to update bootStartCache with corrected value
+4. Browser displays correct timestamps
+5. If another browser with history connects later, it propagates corrected timestamps
 
 #### 3. ESP Fresh Flash (No EEPROM Data)
 
@@ -591,9 +618,11 @@ Time is derived on-demand from bootTable + millis().
 - [ ] Add conflict resolution (newer wins)
 - [ ] Test offline drift over 24 hours
 - [ ] Test multi-browser propagation
+- [x] Re-fetch /timestamps after syncTime to refresh bootStartCache (fixes epoch-0 decode on first load after new batch)
 
 ### Version History
 
 | Version | Changes |
 |---------|---------|
+| 1.3.31 | Fixed bootStartCache staleness after syncTime — re-fetch /timestamps post-sync to avoid epoch-0 timestamps on first load after new batch |
 | 1.0 | Initial SAT architecture with drift compensation |

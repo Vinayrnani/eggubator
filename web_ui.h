@@ -367,8 +367,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
-            tooltip: {
-              callbacks: {
+             tooltip: {
+               backgroundColor: 'rgba(0,0,0,0.7)',
+               callbacks: {
                 title: function(context) {
                   const now = Date.now();
                   const relSeconds = context[0].parsed.x;
@@ -677,6 +678,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         const unixNow = Math.floor(Date.now() / 1000);
         await fetch('/settings/api?action=syncTime&timestamp=' + unixNow);
+
+        // Re-fetch ESP boot table after syncTime so bootStartCache has the
+        // corrected startUnix values. Without this, the browser still holds
+        // stale startUnix=0 for the current boot, causing decodeLogs() to
+        // compute timestamps near epoch 0 (1970) on first load after new batch.
+        try {
+          const refreshResp = await fetch('/timestamps');
+          const refreshData = await refreshResp.json();
+          if (refreshData.bootTable && refreshData.bootTable.length > 0) {
+            await db.bootTimestamps.clear();
+            await db.bootTimestamps.bulkPut(refreshData.bootTable.map(t => ({
+              bootId: t.bootId, startUnix: t.startUnix, duration: 0
+            })));
+            await loadBootStartCache();
+          }
+        } catch (e2) {
+          console.warn('SAT sync: refresh /timestamps failed:', e2);
+        }
       } catch (e) {
         console.warn('SAT sync failed:', e);
       }
@@ -1024,6 +1043,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       <div class="sys-item"><span>Free RAM</span><span id="heap">-- KB</span></div>
       <div class="sys-item"><span>Current Sector</span><span id="sector">--</span></div>
       <div class="sys-item"><span>Start Sector</span><span id="startSector">--</span></div>
+      <div class="sys-item"><span>Boot ID</span><span id="bootId">--</span></div>
       <div class="sys-item"><span>Logs Since Boot</span><span id="bootLogs">--</span></div>
       <div class="sys-item"><span>Dexie Records</span><span id="dexieCount">--</span></div>
       <div class="sys-item"><span>Firmware</span><span id="version">--</span></div>
@@ -1141,6 +1161,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('heap').textContent = Math.round(d.heapFree/1024);
         document.getElementById('sector').textContent = d.currentSector;
         document.getElementById('startSector').textContent = d.startSector;
+        document.getElementById('bootId').textContent = d.bootId;
         document.getElementById('bootLogs').textContent = d.logsInCurrentBoot;
         
         const count = await db.logs.count();
