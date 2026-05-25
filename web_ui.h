@@ -685,14 +685,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
      async function checkAutoReset() {
-       // Prevent double newBatch call after startNewBatch() reload
-       if (sessionStorage.getItem('batchJustStarted') === '1') {
-         sessionStorage.removeItem('batchJustStarted');
-         return; // Skip auto-reset - user just started a new batch
-       }
-       
-       // Step 0: SAT sync first
-       await syncSAT();
+        // Prevent double newBatch call after startNewBatch() reload
+        if (sessionStorage.getItem('batchJustStarted') === '1') {
+          sessionStorage.removeItem('batchJustStarted');
+          return; // Skip auto-reset - user just started a new batch
+        }
+        
+        // Step 0: SAT sync first
+        await syncSAT();
 
        const lastLog = await db.logs.orderBy('t').last();
        const unixNow = Math.floor(Date.now() / 1000);
@@ -925,6 +925,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         currentUptimeSec = statusData.uptimeSec;
         currentBootId = statusData.bootId;
         updateLiveData(statusData);
+
+        // Step 0.5: Detect new batch via startSector change
+        const storedSector = localStorage.getItem('eggubator_startSector');
+        if (storedSector !== null && parseInt(storedSector) !== statusData.startSector) {
+          await db.logs.clear();
+          await db.bootTimestamps.clear();
+          latestBootId = 0;
+          latestTimeSec = 0;
+        }
+        localStorage.setItem('eggubator_startSector', statusData.startSector);
 
         // Step 1: SAT sync first to populate bootStartCache
         const satProgress = document.getElementById('loadingProgress');
