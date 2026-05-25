@@ -76,14 +76,11 @@ All pin assignments are in `config.h`.
 - Synchronises incubation timeline between ESP and browser
 - Auto-adjusts for time drift > 5 seconds
 
-### Recovery System
-- Tracks boot failures in EEPROM
-- Auto-enters recovery mode after **3 consecutive failures**
-- Web endpoints for manual recovery:
-  - `/reboot` - Reboot device
-  - `/rollback` - Reset boot counter
-  - `/recovery` - Enter recovery mode
-  - `/recovery/reset` - Exit recovery mode
+### Flash Durability
+- **No per-boot EEPROM writes** — boot ID and sector pointers recovered entirely from flash
+- `recoverBootIdFromFlash()` walks flash backwards on boot to find last boot ID
+- `clearLogs()` uses a `temp=255` meta flag to signal boot ID reset on next boot
+- EEPROM used only for settings changes and SAT drift corrections (infrequent)
 
 ## Network
 
@@ -113,9 +110,7 @@ If the device is not reachable, follow this sequence exactly:
 | `/ota/check` | Check for updates |
 | `/ota/update` | Trigger OTA update |
 | `/reboot` | Reboot device |
-| `/rollback` | Reset boot counter |
-| `/recovery` | Enter recovery mode |
-| `/recovery/reset` | Exit recovery mode |
+| `/settings/clear` | Clear all log data and reset boot ID |
 
 ## OTA Updates
 

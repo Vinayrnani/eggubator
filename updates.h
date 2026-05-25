@@ -8,56 +8,9 @@
 
 #define FIRMWARE_URL "http://YOUR_SERVER/firmware.bin"
 #define VERSION_URL "http://YOUR_SERVER/version.txt"
-#define FIRMWARE_VERSION "1.3.29"
+#define FIRMWARE_VERSION "1.3.30"
 
 extern ESP8266HTTPUpdateServer httpUpdater;
-
-// EEPROM addresses for boot recovery
-#define EEPROM_BOOT_OK 10
-#define EEPROM_BOOT_COUNT 11
-#define BOOT_OK_MAGIC 0x55
-#define MAX_BOOT_FAILURES 3
-
-extern ESP8266WebServer* pServer;
-
-void initRecovery() {
-  EEPROM.begin(512);
-  uint8_t bootOk = EEPROM.read(EEPROM_BOOT_OK);
-  uint8_t bootCount = EEPROM.read(EEPROM_BOOT_COUNT);
-  
-  
-  // If previously failed, increment failure count
-  if (bootOk != BOOT_OK_MAGIC) {
-    bootCount++;
-    EEPROM.write(EEPROM_BOOT_COUNT, bootCount);
-    EEPROM.commit();
-    
-    // If too many failures, enter recovery mode
-    if (bootCount >= MAX_BOOT_FAILURES) {
-      // Reset boot count after entering recovery
-      EEPROM.write(EEPROM_BOOT_COUNT, 0);
-      EEPROM.commit();
-    }
-  } else {
-    // Successful boot - reset count
-    bootCount = 0;
-    EEPROM.write(EEPROM_BOOT_COUNT, 0);
-    EEPROM.commit();
-  }
-  
-  // Mark that we're starting boot
-  EEPROM.write(EEPROM_BOOT_OK, 0);
-  EEPROM.commit();
-}
-
-void markBootSuccess() {
-  EEPROM.write(EEPROM_BOOT_OK, BOOT_OK_MAGIC);
-  EEPROM.commit();
-}
-
-void setupOTA(ESP8266WebServer& server) {
-  httpUpdater.setup(&server);
-}
 
 bool checkForUpdate() {
   HTTPClient http;

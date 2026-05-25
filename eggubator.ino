@@ -440,8 +440,6 @@ void handleSettingsApi() {
       sweepTargetStep = 15;
       
       saveSettings();
-      EEPROM.write(EEPROM_BOOT_ID, 0);
-      EEPROM.commit();
       server.send(200, "text/plain", "New batch started");
       delay(100);
       ESP.restart();
@@ -717,38 +715,9 @@ void handleReboot() {
   ESP.restart();
 }
 
-void handleRollback() {
-  // Trigger rollback - restore previous firmware if available
-  EEPROM.write(EEPROM_BOOT_COUNT, MAX_BOOT_FAILURES);
-  EEPROM.commit();
-  server.send(200, "text/plain", "Rollback: please reflash to recover");
-}
-
-void handleRecovery() {
-  // Enter recovery mode - reset EEPROM and await reflash
-  EEPROM.write(EEPROM_BOOT_OK, 0);
-  EEPROM.write(EEPROM_BOOT_COUNT, 0);
-  EEPROM.commit();
-  server.send(200, "text/plain", "Recovery mode - please reflash");
-}
-
-void handleRecoveryReset() {
-  // Reset recovery mode - allow normal boot
-  EEPROM.write(EEPROM_BOOT_OK, BOOT_OK_MAGIC);
-  EEPROM.write(EEPROM_BOOT_COUNT, 0);
-  EEPROM.commit();
-  server.send(200, "text/plain", "Recovery reset - normal boot enabled");
-  delay(500);
-  ESP.restart();
-}
-
 void handleClearFlash() {
   clearLogs();
   prepareBootTable();
-  
-  // Reset Boot ID in EEPROM
-  EEPROM.write(EEPROM_BOOT_ID, 0);
-  EEPROM.commit();
   
   // Send response and reboot
   server.send(200, "text/plain", "Flash cleared, boot ID reset to 0, rebooting...");
@@ -792,26 +761,17 @@ void setup() {
   server.on("/ota/update", handleOtaUpdate);
   server.on("/settings/api", handleSettingsApi);
   server.on("/reboot", handleReboot);
-  server.on("/rollback", handleRollback);
-  server.on("/recovery", handleRecovery);
-  server.on("/recovery/reset", handleRecoveryReset);
   server.on("/timestamps", handleTimestamps);
   httpUpdater.setup(&server);
   server.begin();
   
   
-  initRecovery();
-
-  uint8_t bootId = EEPROM.read(EEPROM_BOOT_ID);
-  bootId++;
-  EEPROM.write(EEPROM_BOOT_ID, bootId);
-  EEPROM.commit();
-
-  markBootSuccess();
+  EEPROM.begin(512);
 
   initSectorPointers();
+  currentBootId = recoverBootIdFromFlash();
   prepareBootTable();
-  initLogging(bootId);
+  initLogging(currentBootId);
   loadSettings();
 
   initDHT();

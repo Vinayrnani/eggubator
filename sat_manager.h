@@ -6,7 +6,6 @@
 #include "logging.h"
 
 // EEPROM addresses for SAT
-#define EEPROM_BOOT_ID 12
 #define EEPROM_LAST_KNOWN_BOOT_ID 15
 #define EEPROM_LAST_KNOWN_START_UNIX 16
 

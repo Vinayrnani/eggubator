@@ -23,7 +23,7 @@ void prepareBootTable() {
       bootSessions[i].startUnix = bootSessions[i - 1].startUnix + bootSessions[i - 1].duration;
   }
 
-  uint8_t curBootId = EEPROM.read(EEPROM_BOOT_ID);
+  uint8_t curBootId = currentBootId;
   uint32_t curStart = 0;
   if (bootSessionCount > 0)
     curStart = bootSessions[bootSessionCount - 1].startUnix + bootSessions[bootSessionCount - 1].duration;

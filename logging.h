@@ -56,6 +56,7 @@ extern float lastLoggedHum;
 extern uint8_t lastLoggedStates;
 
 void initSectorPointers();
+uint8_t recoverBootIdFromFlash();
 void initLogging(uint8_t bootId);
 bool logData(float temp, float hum, bool heater, bool atomizer, bool fan, uint8_t servoStep, unsigned long forceInterval = 90000);
 int getLogHex(String& hex, int maxEntries = 200, uint8_t sinceBootId = 0, uint32_t sinceTimeSec = 0);
