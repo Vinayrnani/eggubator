@@ -67,7 +67,8 @@ bool movingInStep = false;
 int stepStartAngle = 0;
 int stepTargetAngle = 0;
 unsigned long stepMoveStart = 0;
-int8_t angleAdjustment = 0;
+int8_t angleAdjustMin = 0;
+int8_t angleAdjustMax = 0;
 
 Servo myServo;
 
@@ -90,7 +91,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
-#define SETTINGS_MAGIC_VAL 0xA8
+#define SETTINGS_MAGIC_VAL 0xAA
 
 struct DeviceSettings {
   uint8_t magic;
@@ -99,8 +100,9 @@ struct DeviceSettings {
   unsigned long turnInterval;
   unsigned long pulseOnTime;
   uint32_t startTimestamp;
-  uint8_t turnDurationSeconds;
-  int8_t angleAdjustment;
+  uint8_t turnDurationDs;
+  int8_t angleAdjustMin;
+  int8_t angleAdjustMax;
 };
 
 // ============================================
@@ -108,9 +110,8 @@ struct DeviceSettings {
 // ============================================
 
 void getServoEndpoints(uint8_t &minStep, uint8_t &maxStep) {
-  int8_t adjSteps = angleAdjustment / 6;
-  minStep = constrain(7 - adjSteps, 0, 31);
-  maxStep = constrain(22 + adjSteps, 0, 31);
+  minStep = constrain(7 + (angleAdjustMin / 6), 0, 31);
+  maxStep = constrain(22 + (angleAdjustMax / 6), 0, 31);
 }
 
 void saveSettings() {
@@ -122,8 +123,9 @@ void saveSettings() {
   if (settings.stageLockdown != stageLockdown) { settings.stageLockdown = stageLockdown; changed = true; }
   if (settings.logInterval != LOG_INTERVAL) { settings.logInterval = LOG_INTERVAL; changed = true; }
   if (EGG_TURN_INTERVAL != 20000 && settings.turnInterval != EGG_TURN_INTERVAL) { settings.turnInterval = EGG_TURN_INTERVAL; changed = true; }
-  if (settings.turnDurationSeconds != (EGG_TURN_DURATION / 1000)) { settings.turnDurationSeconds = (EGG_TURN_DURATION / 1000); changed = true; }
-  if (settings.angleAdjustment != angleAdjustment) { settings.angleAdjustment = angleAdjustment; changed = true; }
+  if (settings.turnDurationDs != (EGG_TURN_DURATION / 100)) { settings.turnDurationDs = (EGG_TURN_DURATION / 100); changed = true; }
+  if (settings.angleAdjustMin != angleAdjustMin) { settings.angleAdjustMin = angleAdjustMin; changed = true; }
+  if (settings.angleAdjustMax != angleAdjustMax) { settings.angleAdjustMax = angleAdjustMax; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
   
@@ -141,8 +143,9 @@ void loadSettings() {
     stageLockdown = settings.stageLockdown;
     LOG_INTERVAL = settings.logInterval;
     EGG_TURN_INTERVAL = (settings.turnInterval >= 3600000) ? settings.turnInterval : 7200000;
-    EGG_TURN_DURATION = settings.turnDurationSeconds > 0 && settings.turnDurationSeconds <= 10 ? settings.turnDurationSeconds * 1000 : 2000;
-    angleAdjustment = settings.angleAdjustment;
+    EGG_TURN_DURATION = settings.turnDurationDs > 0 && settings.turnDurationDs <= 40 ? settings.turnDurationDs * 100 : 2000;
+    angleAdjustMin = settings.angleAdjustMin;
+    angleAdjustMax = settings.angleAdjustMax;
     startTimestamp = settings.startTimestamp;
     
     if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
@@ -390,8 +393,7 @@ void handleControl() {
     } else if (device == "servo") {
       if (mode == "left") {
         servoEnabled = true;
-        int8_t adjSteps = angleAdjustment / 6;
-        currentServoStep = constrain(7 - adjSteps, 0, 31);
+        currentServoStep = constrain(7 + (angleAdjustMin / 6), 0, 31);
         int angle = constrain(currentServoStep * 6, 0, 180);
         int pulseWidth = map(angle, 0, 180, 544, 2450);
         myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);
@@ -401,8 +403,7 @@ void handleControl() {
         server.send(200, "text/plain", "Servo moved to left (" + String(angle) + "°)");
       } else if (mode == "right") {
         servoEnabled = true;
-        int8_t adjSteps = angleAdjustment / 6;
-        currentServoStep = constrain(22 + adjSteps, 0, 31);
+        currentServoStep = constrain(22 + (angleAdjustMax / 6), 0, 31);
         int angle = constrain(currentServoStep * 6, 0, 180);
         int pulseWidth = map(angle, 0, 180, 544, 2450);
         myServo.attach(SERVO_PIN, 544, 2450, pulseWidth);
@@ -483,22 +484,31 @@ void handleSettingsApi() {
     }
     server.send(200, "text/plain", "Egg turner interval set to " + String(val/3600000) + " hours");
   } else if (server.hasArg("eggTurnDuration")) {
-    uint8_t val = server.arg("eggTurnDuration").toInt();
-    if (val > 0 && val <= 10) {
-      EGG_TURN_DURATION = val * 1000;
+    float val = server.arg("eggTurnDuration").toFloat();
+    if (val >= 0.5f && val <= 4.0f) {
+      EGG_TURN_DURATION = (unsigned long)(val * 1000);
       saveSettings();
-      server.send(200, "text/plain", "Egg sweep duration set to " + String(val) + "s");
+      server.send(200, "text/plain", "Egg sweep duration set to " + String(val, 1) + "s");
     } else {
-      server.send(400, "text/plain", "Invalid duration (must be 1-10s)");
+      server.send(400, "text/plain", "Invalid duration (must be 0.5-4s)");
     }
-  } else if (server.hasArg("angleAdjustment")) {
-    int8_t val = server.arg("angleAdjustment").toInt();
-    if (val >= -42 && val <= 42) {
-      angleAdjustment = val;
+  } else if (server.hasArg("angleAdjustMin")) {
+    int8_t val = server.arg("angleAdjustMin").toInt();
+    if (val >= -36 && val <= 36 && val % 6 == 0) {
+      angleAdjustMin = val;
       saveSettings();
-      server.send(200, "text/plain", "Angle adjustment set to " + String(val));
+      server.send(200, "text/plain", "Min angle adjustment set to " + String(val));
     } else {
-      server.send(400, "text/plain", "Invalid adjustment (must be -42 to 42)");
+      server.send(400, "text/plain", "Invalid min adjustment (must be -36 to +36, multiple of 6)");
+    }
+  } else if (server.hasArg("angleAdjustMax")) {
+    int8_t val = server.arg("angleAdjustMax").toInt();
+    if (val >= -36 && val <= 36 && val % 6 == 0) {
+      angleAdjustMax = val;
+      saveSettings();
+      server.send(200, "text/plain", "Max angle adjustment set to " + String(val));
+    } else {
+      server.send(400, "text/plain", "Invalid max adjustment (must be -36 to +36, multiple of 6)");
     }
   } else if (server.hasArg("pulseOnTime")) {
     unsigned long val = server.arg("pulseOnTime").toInt();
@@ -560,8 +570,8 @@ void handleSettingsApi() {
                   ",\"hum\":" + String(mockHum) +
                   ",\"logInterval\":" + String(LOG_INTERVAL) +
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
-                  ",\"eggTurnDuration\":" + String(EGG_TURN_DURATION / 1000) +
-                  ",\"angleAdjustment\":" + String(angleAdjustment) +
+                  ",\"eggTurnDuration\":" + String((float)EGG_TURN_DURATION / 1000.0f, 1) +
+                  ",\"angleAdjustMin\":" + String(angleAdjustMin) + ",\"angleAdjustMax\":" + String(angleAdjustMax) +
                   ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                   ",\"startTimestamp\":" + String(startTimestamp) +
                   ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +

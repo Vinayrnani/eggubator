@@ -367,30 +367,36 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           plugins: {
             decimation: { enabled: true, algorithm: 'min-max' },
             legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, weight: '700' } } },
-             tooltip: {
-               backgroundColor: 'rgba(0,0,0,0.7)',
-               callbacks: {
-                title: function(context) {
-                  const now = Date.now();
-                  const relSeconds = context[0].parsed.x;
-                  const absTime = new Date(now + relSeconds * 1000);
-                  return absTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-                },
-                label: function(context) {
-                  const idx = context.datasetIndex;
-                  const val = context.raw.y;
-                  const isStepped = context.chart.data.datasets[idx].stepped;
-                  if (idx === 2) return 'Heater: ' + (isStepped ? (val > 0 ? 'ON' : 'OFF') : Math.round(val * 100) + '%');
-                  if (idx === 3) return 'Atomizer: ' + (isStepped ? (val > 2 ? 'ON' : 'OFF') : Math.round((val - 2) * 100) + '%');
-                  if (idx === 4) return 'Fan: ' + (isStepped ? (val > 4 ? 'ON' : 'OFF') : Math.round((val - 4) * 100) + '%');
-                  if (idx === 5) return 'Turner: ' + Math.round(context.raw.y - 1620) + '°';
-                  return null;
-                },
-                filter: function(context) {
-                  return context.datasetIndex >= 2;
-                }
-              }
-            },
+              tooltip: {
+                backgroundColor: 'rgba(0,0,0,0.65)',
+                titleFont: { size: 11 },
+                bodyFont: { size: 10 },
+                padding: 6,
+                cornerRadius: 4,
+                titleColor: '#fff',
+                bodyColor: '#ddd',
+                displayColors: true,
+                 callbacks: {
+                   title: function(context) {
+                     const now = Date.now();
+                     const relSeconds = context[0].parsed.x;
+                     const absTime = new Date(now + relSeconds * 1000);
+                     return absTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                   },
+                   label: function(context) {
+                     const idx = context.datasetIndex;
+                     const val = context.raw.y;
+                     const isStepped = context.chart.data.datasets[idx].stepped;
+                     if (idx === 0) return 'Temp: ' + val.toFixed(1) + '°C';
+                     if (idx === 1) return 'Humidity: ' + val.toFixed(1) + '%';
+                     if (idx === 2) return 'Heater: ' + (isStepped ? (val > 0 ? 'ON' : 'OFF') : Math.round(val * 100) + '%');
+                     if (idx === 3) return 'Atomizer: ' + (isStepped ? (val > 2 ? 'ON' : 'OFF') : Math.round((val - 2) * 100) + '%');
+                     if (idx === 4) return 'Fan: ' + (isStepped ? (val > 4 ? 'ON' : 'OFF') : Math.round((val - 4) * 100) + '%');
+                     if (idx === 5) return 'Turner: ' + Math.round(context.raw.y - 1620) + '°';
+                     return null;
+                   }
+                 }
+               },
             zoom: { 
               pan: { enabled: true, mode: 'x', onPanComplete: function() { updateChart(); } }, 
               zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: function() { updateChart(); } }
@@ -1101,6 +1107,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
     <div class="form-group">
       <label>Egg Rotation Speed</label>
       <select id="eggTurnDuration" class="form-select" onchange="save('eggTurnDuration')">
+        <option value="0.5">Fastest</option>
         <option value="1">Fast</option>
         <option value="2">Medium</option>
         <option value="3">Slow</option>
@@ -1108,11 +1115,21 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       </select>
     </div>
     <div class="form-group">
-      <label>Angle Adjustment (-40 to +40)</label>
+      <label>Min Angle (42° base)</label>
       <div class="angle-control">
-        <button type="button" onclick="adjustAngle(-5)">-</button>
-        <input type="number" id="angleAdjustment" min="-42" max="42" step="6" value="0" readonly onchange="save('angleAdjustment')">
-        <button type="button" onclick="adjustAngle(5)">+</button>
+        <button type="button" onclick="adjustAngle('Min', -6)">-</button>
+        <input type="number" id="angleAdjustMin" min="6" max="78" step="6" value="42" readonly>
+        <button type="button" onclick="adjustAngle('Min', 6)">+</button>
+        <span style="font-size:11px;color:#65676b;margin-left:4px">°</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Max Angle (132° base)</label>
+      <div class="angle-control">
+        <button type="button" onclick="adjustAngle('Max', -6)">-</button>
+        <input type="number" id="angleAdjustMax" min="96" max="168" step="6" value="132" readonly>
+        <button type="button" onclick="adjustAngle('Max', 6)">+</button>
+        <span style="font-size:11px;color:#65676b;margin-left:4px">°</span>
       </div>
     </div>
     <div class="form-group">
@@ -1189,7 +1206,8 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         updateOneMinOption();
         document.getElementById('eggTurnInterval').value = m.eggTurnInterval;
         document.getElementById('eggTurnDuration').value = m.eggTurnDuration;
-        document.getElementById('angleAdjustment').value = m.angleAdjustment;
+        document.getElementById('angleAdjustMin').value = 42 + m.angleAdjustMin;
+        document.getElementById('angleAdjustMax').value = 132 + m.angleAdjustMax;
         document.getElementById('logInterval').value = m.logInterval;
         document.getElementById('pulseOnTime').value = m.pulseOnTime;
       } catch (e) {
@@ -1243,13 +1261,18 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       fetch(`/settings/api?${key}=${val}`).then(() => fetch('/status'));
     }
     
-    function adjustAngle(delta) {
-      const input = document.getElementById('angleAdjustment');
+    function adjustAngle(side, delta) {
+      const input = document.getElementById('angleAdjust' + side);
       let val = parseInt(input.value) + delta;
-      if (val < -40) val = -40;
-      if (val > 40) val = 40;
+      const base = side === 'Min' ? 42 : 132;
+      const minVal = side === 'Min' ? 6 : 96;
+      const maxVal = side === 'Min' ? 78 : 168;
+      if (val < minVal) val = minVal;
+      if (val > maxVal) val = maxVal;
       input.value = val;
-      save('angleAdjustment');
+      fetch('/settings/api?angleAdjust' + side + '=' + (val - base)).then(function(r) {
+        if (!r.ok) { input.value = val - delta; }
+      });
     }
     
     function setMock() {
