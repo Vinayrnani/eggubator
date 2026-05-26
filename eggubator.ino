@@ -374,13 +374,13 @@ void handleControl() {
       heaterMode = isKillOff ? KILL_OFF : AUTO;
       if (isKillOff) {
         heaterState = false;
-        digitalWrite(RELAY_HEATER, LOW);
+        digitalWrite(RELAY_HEATER, HIGH);
       }
     } else if (device == "atomizer") {
       atomizerMode = isKillOff ? KILL_OFF : AUTO;
       if (isKillOff) {
         atomizerState = false;
-        digitalWrite(RELAY_ATOMIZER, LOW);
+        digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerPulsing = false;
         atomizerInOffPhase = false;
       }
@@ -388,7 +388,7 @@ void handleControl() {
       fanMode = isKillOff ? KILL_OFF : AUTO;
       if (isKillOff) {
         fanState = false;
-        digitalWrite(RELAY_FAN, LOW);
+        digitalWrite(RELAY_FAN, HIGH);
       }
     } else if (device == "servo") {
       if (mode == "left") {
@@ -596,7 +596,7 @@ void autoControl() {
       } else if (currentTemp >= TARGET_TEMP) {
         heaterState = false;
       }
-      digitalWrite(RELAY_HEATER, heaterState ? HIGH : LOW);
+      digitalWrite(RELAY_HEATER, heaterState ? LOW : HIGH);
       
       if (heaterState != heaterWasOn) {
         heaterLastChanged = now;
@@ -605,7 +605,7 @@ void autoControl() {
     } else {
       if (heaterState) {
         heaterState = false;
-        digitalWrite(RELAY_HEATER, LOW);
+        digitalWrite(RELAY_HEATER, HIGH);
         heaterWasOn = false;
       }
     }
@@ -626,20 +626,20 @@ void autoControl() {
       if (currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS) {
         if (!atomizerPulsing && !atomizerInOffPhase) {
           atomizerState = true;
-          digitalWrite(RELAY_ATOMIZER, HIGH);
+          digitalWrite(RELAY_ATOMIZER, LOW);
           atomizerPulseStart = millis();
           atomizerPulsing = true;
         }
       } else if (currentHumidity >= TARGET_HUMIDITY) {
         atomizerState = false;
-        digitalWrite(RELAY_ATOMIZER, LOW);
+        digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerPulsing = false;
         atomizerInOffPhase = false;
       }
 
       if (atomizerPulsing && (millis() - atomizerPulseStart >= effectivePulseOn)) {
         atomizerState = false;
-        digitalWrite(RELAY_ATOMIZER, LOW);
+        digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerPulsing = false;
         atomizerInOffPhase = true;
         atomizerOffStart = millis();
@@ -654,7 +654,7 @@ void autoControl() {
     } else {
       if (atomizerState) {
         atomizerState = false;
-        digitalWrite(RELAY_ATOMIZER, LOW);
+        digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerWasOn = false;
         atomizerPulsing = false;
         atomizerInOffPhase = false;
@@ -672,11 +672,11 @@ void autoControl() {
       } else {
         fanState = false;
       }
-      digitalWrite(RELAY_FAN, fanState ? HIGH : LOW);
+      digitalWrite(RELAY_FAN, fanState ? LOW : HIGH);
     } else {
       if (fanState) {
         fanState = false;
-        digitalWrite(RELAY_FAN, LOW);
+        digitalWrite(RELAY_FAN, HIGH);
       }
     }
   }
@@ -820,9 +820,9 @@ void setup() {
   pinMode(RELAY_HEATER, OUTPUT);
   pinMode(RELAY_ATOMIZER, OUTPUT);
   pinMode(RELAY_FAN, OUTPUT);
-  digitalWrite(RELAY_HEATER, LOW);
-  digitalWrite(RELAY_ATOMIZER, LOW);
-  digitalWrite(RELAY_FAN, LOW);
+  digitalWrite(RELAY_HEATER, HIGH);
+  digitalWrite(RELAY_ATOMIZER, HIGH);
+  digitalWrite(RELAY_FAN, HIGH);
 
   // Hold servo pin LOW immediately to suppress SPI boot noise on GPIO14
   pinMode(SERVO_PIN, OUTPUT);
