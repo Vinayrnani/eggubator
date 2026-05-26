@@ -1152,6 +1152,17 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         <option value="5000">5 sec</option>
       </select>
     </div>
+    <div class="form-group">
+      <label>Atomizer Pause Time</label>
+      <select id="pulseOffTime" class="form-select" onchange="save('pulseOffTime')">
+        <option value="5000">5 sec</option>
+        <option value="10000">10 sec</option>
+        <option value="15000">15 sec</option>
+        <option value="20000">20 sec</option>
+        <option value="25000">25 sec</option>
+        <option value="30000">30 sec</option>
+      </select>
+    </div>
     <button class="btn btn-danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -1210,6 +1221,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('angleAdjustMax').value = 132 + m.angleAdjustMax;
         document.getElementById('logInterval').value = m.logInterval;
         document.getElementById('pulseOnTime').value = m.pulseOnTime;
+        document.getElementById('pulseOffTime').value = m.pulseOffTime;
       } catch (e) {
         console.error("Fetch error", e);
       } finally {

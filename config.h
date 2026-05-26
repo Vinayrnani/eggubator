@@ -20,7 +20,7 @@ extern float TARGET_HUMIDITY;
 
 // Timing Constants
 extern unsigned long PULSE_ON_TIME;
-#define PULSE_OFF_TIME 25000
+extern unsigned long PULSE_OFF_TIME;
 #define FAN_EXTEND_TIME 3000
 extern unsigned long LOG_INTERVAL;
 extern unsigned long EGG_TURN_INTERVAL;

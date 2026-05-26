@@ -37,6 +37,7 @@ unsigned long LOG_INTERVAL = 90000;
 unsigned long EGG_TURN_INTERVAL = 7200000;
 unsigned long EGG_TURN_DURATION = 2000; // ms per step (each step = 6°)
 unsigned long PULSE_ON_TIME = 3000;
+unsigned long PULSE_OFF_TIME = 10000;
 
 // Target temperature and humidity (can be changed via web/stage selection)
 float TARGET_TEMP = 37.5;    // Default 37.5°C
@@ -83,6 +84,10 @@ unsigned long heaterLastChanged = 0;
 bool heaterWasOn = false;
 unsigned long atomizerLastChanged = 0;
 bool atomizerWasOn = false;
+bool pendingHeaterOn = false;
+bool pendingAtomizerOn = false;
+unsigned long fanPreRunStart = 0;
+#define FAN_PRE_RUN_TIME 1500
 
 // Web server
 ESP8266WebServer server(80);
@@ -91,7 +96,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 // EEPROM addresses for settings
 #define EEPROM_SETTINGS_MAGIC 40
-#define SETTINGS_MAGIC_VAL 0xAA
+#define SETTINGS_MAGIC_VAL 0xAB
 
 struct DeviceSettings {
   uint8_t magic;
@@ -99,6 +104,7 @@ struct DeviceSettings {
   unsigned long logInterval;
   unsigned long turnInterval;
   unsigned long pulseOnTime;
+  unsigned long pulseOffTime;
   uint32_t startTimestamp;
   uint8_t turnDurationDs;
   int8_t angleAdjustMin;
@@ -127,6 +133,7 @@ void saveSettings() {
   if (settings.angleAdjustMin != angleAdjustMin) { settings.angleAdjustMin = angleAdjustMin; changed = true; }
   if (settings.angleAdjustMax != angleAdjustMax) { settings.angleAdjustMax = angleAdjustMax; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
+  if (settings.pulseOffTime != PULSE_OFF_TIME) { settings.pulseOffTime = PULSE_OFF_TIME; changed = true; }
   if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
   
   if (changed) {
@@ -152,6 +159,11 @@ void loadSettings() {
       PULSE_ON_TIME = settings.pulseOnTime;
     } else {
       PULSE_ON_TIME = 3000;
+    }
+    if (settings.pulseOffTime >= 5000 && settings.pulseOffTime <= 30000 && settings.pulseOffTime % 5000 == 0) {
+      PULSE_OFF_TIME = settings.pulseOffTime;
+    } else {
+      PULSE_OFF_TIME = 10000;
     }
     
     stageLockdown = (getCurrentDay() >= 17); // 0-indexed Day 18 is index 17
@@ -374,12 +386,14 @@ void handleControl() {
       heaterMode = isKillOff ? KILL_OFF : AUTO;
       if (isKillOff) {
         heaterState = false;
+        pendingHeaterOn = false;
         digitalWrite(RELAY_HEATER, HIGH);
       }
     } else if (device == "atomizer") {
       atomizerMode = isKillOff ? KILL_OFF : AUTO;
       if (isKillOff) {
         atomizerState = false;
+        pendingAtomizerOn = false;
         digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerPulsing = false;
         atomizerInOffPhase = false;
@@ -515,6 +529,15 @@ void handleSettingsApi() {
     PULSE_ON_TIME = val;
     saveSettings();
     server.send(200, "text/plain", "Atomizer pulse on time set to " + String(val/1000) + "s");
+  } else if (server.hasArg("pulseOffTime")) {
+    unsigned long val = server.arg("pulseOffTime").toInt();
+    if (val >= 5000 && val <= 30000 && val % 5000 == 0) {
+      PULSE_OFF_TIME = val;
+      saveSettings();
+      server.send(200, "text/plain", "Atomizer pulse off time set to " + String(val/1000) + "s");
+    } else {
+      server.send(400, "text/plain", "Invalid off time (must be 5-30s, multiple of 5)");
+    }
   } else if (server.hasArg("action")) {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
@@ -572,8 +595,9 @@ void handleSettingsApi() {
                   ",\"eggTurnInterval\":" + String(EGG_TURN_INTERVAL) +
                   ",\"eggTurnDuration\":" + String((float)EGG_TURN_DURATION / 1000.0f, 1) +
                   ",\"angleAdjustMin\":" + String(angleAdjustMin) + ",\"angleAdjustMax\":" + String(angleAdjustMax) +
-                  ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
-                  ",\"startTimestamp\":" + String(startTimestamp) +
+",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
+                   ",\"pulseOffTime\":" + String(PULSE_OFF_TIME) +
+                   ",\"startTimestamp\":" + String(startTimestamp) +
                   ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                   ",\"currentDay\":" + String(getCurrentDay()) +
                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
@@ -592,19 +616,29 @@ void autoControl() {
     // Heater Control
     if (heaterMode == AUTO) {
       if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
-        heaterState = true;
+        if (!heaterState && !pendingHeaterOn) {
+          pendingHeaterOn = true;
+          fanPreRunStart = millis();
+        }
+        if (pendingHeaterOn && (millis() - fanPreRunStart >= FAN_PRE_RUN_TIME)) {
+          heaterState = true;
+          digitalWrite(RELAY_HEATER, LOW);
+          pendingHeaterOn = false;
+        }
       } else if (currentTemp >= TARGET_TEMP) {
         heaterState = false;
+        pendingHeaterOn = false;
+        digitalWrite(RELAY_HEATER, HIGH);
       }
-      digitalWrite(RELAY_HEATER, heaterState ? LOW : HIGH);
       
       if (heaterState != heaterWasOn) {
         heaterLastChanged = now;
         heaterWasOn = heaterState;
       }
     } else {
-      if (heaterState) {
+      if (heaterState || pendingHeaterOn) {
         heaterState = false;
+        pendingHeaterOn = false;
         digitalWrite(RELAY_HEATER, HIGH);
         heaterWasOn = false;
       }
@@ -624,14 +658,20 @@ void autoControl() {
       }
 
       if (currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS) {
-        if (!atomizerPulsing && !atomizerInOffPhase) {
+        if (!atomizerPulsing && !atomizerInOffPhase && !pendingAtomizerOn) {
+          pendingAtomizerOn = true;
+          fanPreRunStart = millis();
+        }
+        if (pendingAtomizerOn && (millis() - fanPreRunStart >= FAN_PRE_RUN_TIME)) {
           atomizerState = true;
           digitalWrite(RELAY_ATOMIZER, LOW);
           atomizerPulseStart = millis();
           atomizerPulsing = true;
+          pendingAtomizerOn = false;
         }
       } else if (currentHumidity >= TARGET_HUMIDITY) {
         atomizerState = false;
+        pendingAtomizerOn = false;
         digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerPulsing = false;
         atomizerInOffPhase = false;
@@ -652,8 +692,9 @@ void autoControl() {
         atomizerWasOn = atomizerState;
       }
     } else {
-      if (atomizerState) {
+      if (atomizerState || pendingAtomizerOn) {
         atomizerState = false;
+        pendingAtomizerOn = false;
         digitalWrite(RELAY_ATOMIZER, HIGH);
         atomizerWasOn = false;
         atomizerPulsing = false;
@@ -666,7 +707,7 @@ void autoControl() {
       bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
       bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
       
-      if (heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
+      if (pendingHeaterOn || pendingAtomizerOn || heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
           currentTemp > MAX_SAFE_TEMP) {
         fanState = true;
       } else {
