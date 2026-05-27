@@ -615,7 +615,7 @@ void autoControl() {
     
     // Heater Control
     if (heaterMode == AUTO) {
-      if (currentTemp < TARGET_TEMP - TEMP_HYSTERESIS) {
+      if (currentTemp <= TARGET_TEMP - TEMP_HYSTERESIS) {
         if (!heaterState && !pendingHeaterOn) {
           pendingHeaterOn = true;
           fanPreRunStart = millis();
@@ -657,12 +657,13 @@ void autoControl() {
         effectivePulseOn = PULSE_ON_TIME * 2;
       }
 
-      if (currentHumidity < TARGET_HUMIDITY - HUMIDITY_HYSTERESIS) {
-        if (!atomizerPulsing && !atomizerInOffPhase && !pendingAtomizerOn) {
+      float humHysteresis = TARGET_HUMIDITY * 5.0f / 100.0f;
+      if (currentHumidity < TARGET_HUMIDITY - humHysteresis || atomizerPulsing || atomizerInOffPhase || pendingAtomizerOn) {
+        if (currentHumidity < TARGET_HUMIDITY && !atomizerPulsing && !atomizerInOffPhase && !pendingAtomizerOn) {
           pendingAtomizerOn = true;
           fanPreRunStart = millis();
         }
-        if (pendingAtomizerOn && (millis() - fanPreRunStart >= FAN_PRE_RUN_TIME)) {
+        if (pendingAtomizerOn && currentHumidity < TARGET_HUMIDITY && (millis() - fanPreRunStart >= FAN_PRE_RUN_TIME)) {
           atomizerState = true;
           digitalWrite(RELAY_ATOMIZER, LOW);
           atomizerPulseStart = millis();
@@ -685,6 +686,10 @@ void autoControl() {
         atomizerOffStart = millis();
       } else if (atomizerInOffPhase && (millis() - atomizerOffStart >= effectivePulseOff)) {
         atomizerInOffPhase = false;
+        if (currentHumidity < TARGET_HUMIDITY && !pendingAtomizerOn) {
+          pendingAtomizerOn = true;
+          fanPreRunStart = millis();
+        }
       }
       
       if (atomizerState != atomizerWasOn) {
