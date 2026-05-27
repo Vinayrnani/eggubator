@@ -173,10 +173,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     <div class="card">
       <h3 style="margin-bottom:10px;">Environment Stability Analysis</h3>
-      <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">LAST 24 HOURS</div>
-      <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
-        <div class="stat-card" style="text-align:left; padding:8px;">
-          <div class="stat-label">Temperature (±0.3°C)</div>
+       <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">LAST 24 HOURS</div>
+       <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
+         <div class="stat-card" style="text-align:left; padding:8px;">
+           <div class="stat-label">Temperature (±0.4°C)</div>
           <div style="font-size:11px; line-height:1.4;">
             <div><span style="color:#f02849;font-weight:bold;">Under:</span> <span id="tUnder24">--</span></div>
             <div style="color:#8a8d91;font-size:9px;" id="tUnderMax24">Longest: --</div>
@@ -195,10 +195,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
       </div>
       
-      <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">ENTIRE INCUBATION</div>
-      <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
-        <div class="stat-card" style="text-align:left; padding:8px;">
-          <div class="stat-label">Temperature (±0.3°C)</div>
+       <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:4px;">ENTIRE INCUBATION</div>
+       <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+         <div class="stat-card" style="text-align:left; padding:8px;">
+           <div class="stat-label">Temperature (±0.4°C)</div>
           <div style="font-size:11px; line-height:1.4;">
             <div><span style="color:#f02849;font-weight:bold;">Under:</span> <span id="tUnderAll">--</span></div>
             <div style="color:#8a8d91;font-size:9px;" id="tUnderMaxAll">Longest: --</div>
@@ -497,12 +497,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       return s.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' + sTime + '-' + eTime;
     }
 
-    async function calculateStability() {
-      const now = Date.now();
-      const targetT = parseFloat(document.getElementById('targetTemp').textContent) || 37.5;
-      const targetH = parseFloat(document.getElementById('targetHum').textContent) || 55.0;
-      const tempUnderThreshold = targetT - 0.3;
-      const tempOverThreshold = targetT + 0.3;
+     async function calculateStability() {
+       const now = Date.now();
+       const targetT = parseFloat(document.getElementById('targetTemp').textContent) || 37.5;
+       const targetH = parseFloat(document.getElementById('targetHum').textContent) || 55.0;
+       const tempUnderThreshold = targetT - 0.4;
+       const tempOverThreshold = targetT + 0.4;
       const humUnderThreshold = targetH - 5.0;
       const humOverThreshold = targetH + 5.0;
 
