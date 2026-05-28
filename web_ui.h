@@ -1164,19 +1164,8 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       </select>
     </div>
     <div class="form-group">
-      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <button class="btn btn-primary" onclick="checkForUpdates()" style="flex: 1;">Check for Updates</button>
-        <label for="firmwareFile" class="btn btn-primary" style="flex: 1; margin: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-          <i class="fa-solid fa-upload"></i> Upload Firmware
-        </label>
-        <input type="file" id="firmwareFile" accept=".bin" style="display: none;" onchange="handleFirmwareUpload(event)">
-      </div>
-      <div id="updateStatus" style="margin-top: 10px; padding: 12px; border-radius: 8px; display: none; border-left: 4px solid var(--primary);"></div>
-      <div id="updateProgress" style="margin-top: 8px; display: none;">
-        <div style="background: #e7f3ff; border-radius: 6px; height: 24px; overflow: hidden;">
-          <div id="progressBar" style="background: linear-gradient(90deg, var(--primary), var(--primary-dark)); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700;"></div>
-        </div>
-      </div>
+      <button class="btn btn-primary" onclick="checkForUpdates()">Check for Updates</button>
+      <div id="updateStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
     </div>
     <button class="btn btn-danger" onclick="reboot()">Restart Controller</button>
   </div>
@@ -1198,174 +1187,62 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       const button = event.target;
       const statusDiv = document.getElementById('updateStatus');
       
+      // Disable button and show loading state
       button.disabled = true;
       button.textContent = 'Checking...';
       statusDiv.style.display = 'none';
+      statusDiv.className = '';
+      statusDiv.textContent = '';
       
       try {
-        const statusResp = await fetch('/status');
-        const statusData = await statusResp.json();
-        const currentVersion = (statusData.version || '0.0.0').replace(/^v/, '');
+        // First check if update is available
+        const checkRes = await fetch('/ota/check');
+        const checkData = await checkRes.json();
         
-        const githubResp = await fetch('https://api.github.com/repos/Vinayrnani/eggubator/releases/latest', {
-          headers: { 'Accept': 'application/vnd.github.v3+json' }
-        });
-        
-        if (!githubResp.ok) {
-          throw new Error('Failed to fetch release info from GitHub');
-        }
-        
-        const release = await githubResp.json();
-        let latestVersion = (release.tag_name || '0.0.0').replace(/^v/, '');
-        
-        const firmwareAsset = release.assets.find(a => a.name === 'firmware.bin');
-        if (!firmwareAsset) {
-          throw new Error('firmware.bin not found in latest release');
-        }
-        
-        const currentParts = currentVersion.split('.').map(Number);
-        const latestParts = latestVersion.split('.').map(Number);
-        let isNewer = false;
-        for (let i = 0; i < 3; i++) {
-          if ((latestParts[i] || 0) > (currentParts[i] || 0)) {
-            isNewer = true;
-            break;
-          } else if ((latestParts[i] || 0) < (currentParts[i] || 0)) {
-            break;
+          if (checkData.update) {
+          if (confirm(`Update available!\nCurrent: ${checkData.currentVersion}\nLatest: ${checkData.latestVersion}\n\nDownload and install now?`)) {
+            // User confirmed - apply update
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'alert alert-info';
+            statusDiv.textContent = 'Downloading and applying update...';
+            
+            const applyRes = await fetch('/ota/apply', {
+              method: 'POST'
+            });
+            const applyData = await applyRes.json();
+            
+            if (applyData.status === 'applying') {
+              statusDiv.className = 'alert alert-success';
+              statusDiv.textContent = 'Update applied! Device will reboot shortly...';
+              
+              // Wait a bit then reload to show reboot message
+              setTimeout(() => {
+                location.reload();
+              }, 3000);
+            } else {
+              statusDiv.className = 'alert alert-danger';
+              statusDiv.textContent = 'Error: ' + (applyData.message || 'Unknown error');
+            }
+          } else {
+            // User cancelled
+            button.disabled = false;
+            button.textContent = 'Check for Updates';
           }
-        }
-        
-        if (!isNewer) {
-          statusDiv.style.display = 'block';
-          statusDiv.className = 'alert alert-info';
-          statusDiv.innerHTML = '<strong>Up to date</strong><br>Version: v' + currentVersion;
-          button.disabled = false;
-          button.textContent = 'Check for Updates';
-          return;
-        }
-        
-        const msg = 'Update available!\nCurrent: v' + currentVersion + '\nLatest: v' + latestVersion + '\n\nDownload and install now?';
-        if (!confirm(msg)) {
-          button.disabled = false;
-          button.textContent = 'Check for Updates';
-          return;
-        }
-        
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'alert alert-info';
-        statusDiv.innerHTML = '<strong>Downloading firmware...</strong><br><small>Please wait</small>';
-        
-        const firmwareResp = await fetch(firmwareAsset.browser_download_url);
-        if (!firmwareResp.ok) {
-          throw new Error('Failed to download firmware from GitHub');
-        }
-        
-        const firmwareBlob = await firmwareResp.blob();
-        
-        statusDiv.innerHTML = '<strong>Uploading to device...</strong><br><small>Device will restart automatically</small>';
-        
-        const formData = new FormData();
-        formData.append('firmware', firmwareBlob, 'firmware.bin');
-        
-        const uploadResp = await fetch('/update', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (uploadResp.ok) {
-          statusDiv.className = 'alert alert-success';
-          statusDiv.innerHTML = '<strong>Update successful!</strong><br>Device restarting...';
-          setTimeout(() => {
-            statusDiv.innerHTML = '<strong>Reconnecting...</strong><br><small>Refresh page in 30 seconds</small>';
-          }, 3000);
         } else {
-          throw new Error('Upload to device failed (HTTP ' + uploadResp.status + ')');
+          // No update available
+          button.disabled = false;
+          button.textContent = 'Check for Updates';
+          statusDiv.style.display = 'block';
+          statusDiv.className = 'alert alert-success';
+          statusDiv.textContent = 'No updates available. You are running the latest version.';
         }
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Check for Updates';
         statusDiv.style.display = 'block';
         statusDiv.className = 'alert alert-danger';
-        statusDiv.innerHTML = '<strong>Error:</strong> ' + error.message;
+        statusDiv.textContent = 'Error checking for updates: ' + error.message;
       }
-    }
-
-    async function handleFirmwareUpload(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      
-      const statusDiv = document.getElementById('updateStatus');
-      const progressDiv = document.getElementById('updateProgress');
-      const progressBar = document.getElementById('progressBar');
-      
-      if (!file.name.endsWith('.bin')) {
-        statusDiv.style.display = 'block';
-        statusDiv.style.borderLeftColor = 'var(--off)';
-        statusDiv.style.background = '#fff5f5';
-        statusDiv.innerHTML = '<strong style="color: var(--off);">Invalid file</strong><br>Please select a .bin firmware file';
-        event.target.value = '';
-        return;
-      }
-      
-      const confirmMsg = 'Upload firmware: ' + file.name + '\nSize: ' + (file.size / 1024).toFixed(1) + ' KB\n\nDevice will restart after upload. Continue?';
-      if (!confirm(confirmMsg)) {
-        event.target.value = '';
-        return;
-      }
-      
-      statusDiv.style.display = 'block';
-      statusDiv.style.borderLeftColor = 'var(--primary)';
-      statusDiv.style.background = '#e7f3ff';
-      statusDiv.innerHTML = '<strong style="color: var(--primary);">Uploading firmware...</strong><br>Do not close this page or power off the device';
-      progressDiv.style.display = 'block';
-      progressBar.style.width = '0%';
-      progressBar.textContent = '0%';
-      
-      try {
-        const formData = new FormData();
-        formData.append('firmware', file);
-        
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            progressBar.style.width = percent + '%';
-            progressBar.textContent = percent + '%';
-          }
-        });
-        
-        xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
-            progressBar.style.width = '100%';
-            progressBar.textContent = '100%';
-            statusDiv.style.borderLeftColor = 'var(--on)';
-            statusDiv.style.background = '#f0fdf4';
-            statusDiv.innerHTML = '<strong style="color: var(--on);">Upload complete!</strong><br>Device is restarting... Page will reload in 10 seconds';
-            
-            setTimeout(() => {
-              window.location.reload();
-            }, 10000);
-          } else {
-            throw new Error('Upload failed: ' + xhr.statusText);
-          }
-        });
-        
-        xhr.addEventListener('error', () => {
-          throw new Error('Network error during upload');
-        });
-        
-        xhr.open('POST', '/update');
-        xhr.send(formData);
-        
-      } catch (error) {
-        statusDiv.style.borderLeftColor = 'var(--off)';
-        statusDiv.style.background = '#fff5f5';
-        statusDiv.innerHTML = '<strong style="color: var(--off);">Upload failed</strong><br>' + error.message;
-        progressDiv.style.display = 'none';
-      }
-      
-      event.target.value = '';
     }
 
     async function mainLoop() {

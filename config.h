@@ -12,7 +12,6 @@ extern float TARGET_HUMIDITY;
 #define HUMIDITY_HYSTERESIS 5.0
 #define MAX_SAFE_TEMP 38.0
 
-
 // Pin Definitions
 #define RELAY_HEATER D1
 #define RELAY_ATOMIZER D2
@@ -26,8 +25,5 @@ extern unsigned long PULSE_OFF_TIME;
 extern unsigned long LOG_INTERVAL;
 extern unsigned long EGG_TURN_INTERVAL;
 extern unsigned long EGG_TURN_DURATION;
-
-// Firmware Version
-#define FIRMWARE_VERSION "1.4.6"
 
 #endif
