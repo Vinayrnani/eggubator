@@ -28,6 +28,6 @@ extern unsigned long EGG_TURN_INTERVAL;
 extern unsigned long EGG_TURN_DURATION;
 
 // Firmware Version
-#define FIRMWARE_VERSION "1.4.3"
+#define FIRMWARE_VERSION "1.4.4"
 
 #endif
