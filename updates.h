@@ -9,7 +9,7 @@
 
 #define FIRMWARE_URL "https://github.com/Vinayrnani/eggubator/releases/latest/download/firmware.bin"
 #define VERSION_URL "https://api.github.com/repos/Vinayrnani/eggubator/releases/latest"
-#define FIRMWARE_VERSION "1.3.36"
+#define FIRMWARE_VERSION "1.3.37"
 
 extern ESP8266HTTPUpdateServer httpUpdater;
 
