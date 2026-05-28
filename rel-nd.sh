@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-CURRENT_VERSION=$(grep '#define FIRMWARE_VERSION' updates.h | cut -d'"' -f2)
+CURRENT_VERSION=$(grep '#define FIRMWARE_VERSION' config.h | cut -d'"' -f2)
 
 if [ $# -eq 1 ]; then
     NEW_VERSION="$1"
@@ -14,7 +14,7 @@ fi
 TAG="v$NEW_VERSION"
 
 echo "=== Bumping version: $CURRENT_VERSION → $NEW_VERSION ==="
-sed -i "s/#define FIRMWARE_VERSION \"$CURRENT_VERSION\"/#define FIRMWARE_VERSION \"$NEW_VERSION\"/" updates.h
+sed -i "s/#define FIRMWARE_VERSION \"$CURRENT_VERSION\"/#define FIRMWARE_VERSION \"$NEW_VERSION\"/" config.h
 echo "$NEW_VERSION" > version.txt
 
 echo ""
@@ -25,7 +25,7 @@ cp build/eggubator.ino.bin firmware.bin
 
 echo ""
 echo "=== Committing ==="
-git add updates.h version.txt firmware.bin
+git add config.h version.txt
 git commit -m "release: $TAG"
 git push origin HEAD
 
