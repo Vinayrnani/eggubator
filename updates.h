@@ -9,7 +9,7 @@
 
 #define FIRMWARE_URL "https://github.com/Vinayrnani/eggubator/releases/latest/download/firmware.bin"
 #define VERSION_URL "https://api.github.com/repos/Vinayrnani/eggubator/releases/latest"
-#define FIRMWARE_VERSION "1.3.38"
+#define FIRMWARE_VERSION "1.4.0"
 
 extern ESP8266HTTPUpdateServer httpUpdater;
 
@@ -38,7 +38,16 @@ bool checkForUpdate() {
           if (versionToCompare.startsWith("v")) {
             versionToCompare = versionToCompare.substring(1);
           }
-          bool hasUpdate = (versionToCompare != FIRMWARE_VERSION);
+          bool hasUpdate = false;
+          int vMaj = versionToCompare.substring(0, versionToCompare.indexOf('.')).toInt();
+          int vMin = versionToCompare.substring(versionToCompare.indexOf('.')+1, versionToCompare.lastIndexOf('.')).toInt();
+          int vPat = versionToCompare.substring(versionToCompare.lastIndexOf('.')+1).toInt();
+          int cMaj = String(FIRMWARE_VERSION).substring(0, String(FIRMWARE_VERSION).indexOf('.')).toInt();
+          int cMin = String(FIRMWARE_VERSION).substring(String(FIRMWARE_VERSION).indexOf('.')+1, String(FIRMWARE_VERSION).lastIndexOf('.')).toInt();
+          int cPat = String(FIRMWARE_VERSION).substring(String(FIRMWARE_VERSION).lastIndexOf('.')+1).toInt();
+          if (vMaj > cMaj) hasUpdate = true;
+          else if (vMaj == cMaj && vMin > cMin) hasUpdate = true;
+          else if (vMaj == cMaj && vMin == cMin && vPat > cPat) hasUpdate = true;
           return hasUpdate;
         }
       }
@@ -48,7 +57,7 @@ bool checkForUpdate() {
   return false;
 }
 
-void performUpdate() {
+bool performUpdate() {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -59,15 +68,19 @@ void performUpdate() {
     if (httpCode == 200) {
       WiFiClient* stream = http.getStreamPtr();
       size_t size = http.getSize();
-      if (Update.begin(size)) {
-        if (Update.writeStream(*stream) && Update.end(true)) {
-          delay(1000);
-          ESP.restart();
+      if (size > 0 && Update.begin(size)) {
+        if (Update.writeStream(*stream)) {
+          if (Update.end(true)) {
+            delay(1000);
+            ESP.restart();
+            return true;
+          }
         }
       }
     }
     http.end();
   }
+  return false;
 }
 
 #endif // UPDATES_H
