@@ -1,7 +1,6 @@
 
 build*/
 # Build outputs
-firmware.bin
 *.ino.cpp
 node_modules/
 .pio

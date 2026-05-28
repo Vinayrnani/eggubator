@@ -3,7 +3,7 @@ set -e
 
 echo "Compiling firmware..."
 mkdir -p build
-arduino-cli compile -b esp8266:esp8266:nodemcu -j 0 --build-path build/.cache --output-dir build eggubator.ino
+arduino-cli compile -b esp8266:esp8266:nodemcu -j "$(nproc)" --build-path build/.cache --output-dir build eggubator.ino
 
 echo "Copying firmware to firmware.bin..."
 cp build/eggubator.ino.bin firmware.bin

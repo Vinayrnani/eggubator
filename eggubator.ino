@@ -17,7 +17,6 @@
 #include "wifi_manager.h"
 #include "logging.h"
 
-#include "updates.h"
 #include "web_ui.h"
 #include "sector_viewer.h"
 #include "sat_manager.h"
@@ -444,53 +443,9 @@ void handleControl() {
   }
 }
 
-void handleOtaCheck() {
-  bool updateAvailable = checkForUpdate();
-  String current = FIRMWARE_VERSION;
-  String latest = "unknown";
-  
-  // Fetch latest version for response
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  if (http.begin(client, VERSION_URL)) {
-    int httpCode = http.GET();
-    if (httpCode == 200) {
-      String payload = http.getString();
-      http.end();
-      
-      // Parse JSON to extract tag_name
-      int tagStart = payload.indexOf("\"tag_name\":\"");
-      if (tagStart != -1) {
-        tagStart += 12; // Length of "\"tag_name\":\""
-        int tagEnd = payload.indexOf('\"', tagStart);
-        if (tagEnd != -1) {
-          latest = payload.substring(tagStart, tagEnd);
-        }
-      }
-    }
-    http.end();
-  }
-  
-  String json = "{\"update\":" + String(updateAvailable ? "true" : "false") + 
-                ",\"currentVersion\":\"" + current + 
-                "\",\"latestVersion\":\"" + latest + "\"}";
-  server.send(200, "application/json", json);
-}
 
-void handleOtaApply() {
-  // Prevent concurrent updates
-  static bool updateInProgress = false;
-  if (updateInProgress) {
-    server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"Update already in progress\"}");
-    return;
-  }
-  
-  updateInProgress = true;
-  server.send(200, "application/json", "{\"status\":\"applying\",\"message\":\"Download and applying update...\"}");
-  performUpdate();
-  // Note: performUpdate() calls ESP.restart() on success
-}
+
+
 
 void handleSettingsApi() {
   if (server.hasArg("autosim")) {
@@ -735,9 +690,10 @@ void autoControl() {
     // Fan Control
     if (fanMode == AUTO) {
       bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
+      bool atomizerActive = atomizerPulsing || atomizerInOffPhase || pendingAtomizerOn || atomizerState;
       bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
       
-      if (pendingHeaterOn || pendingAtomizerOn || heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
+      if (pendingHeaterOn || heaterState || withinHeaterWindow || atomizerActive || withinAtomizerWindow || 
           currentTemp > MAX_SAFE_TEMP) {
         fanState = true;
       } else {
@@ -916,11 +872,13 @@ void setup() {
   server.on("/data", handleData);
   server.on("/control", handleControl);
   server.on("/settings/clear", handleClearFlash);
-  server.on("/ota/check", handleOtaCheck);
-  server.on("/ota/apply", HTTP_POST, handleOtaApply);
+
+
   server.on("/settings/api", handleSettingsApi);
   server.on("/reboot", handleReboot);
   server.on("/timestamps", handleTimestamps);
+
+
   httpUpdater.setup(&server);
   server.begin();
   
