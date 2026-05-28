@@ -736,8 +736,9 @@ void autoControl() {
     if (fanMode == AUTO) {
       bool withinHeaterWindow = (!heaterState && (now - heaterLastChanged < FAN_EXTEND_TIME));
       bool withinAtomizerWindow = (!atomizerState && (now - atomizerLastChanged < FAN_EXTEND_TIME));
+      
       if (pendingHeaterOn || pendingAtomizerOn || heaterState || withinHeaterWindow || atomizerState || withinAtomizerWindow || 
-          currentTemp > MAX_SAFE_TEMP || currentHumidity < TARGET_HUMIDITY) {
+          currentTemp > MAX_SAFE_TEMP) {
         fanState = true;
       } else {
         fanState = false;
