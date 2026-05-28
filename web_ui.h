@@ -1163,6 +1163,10 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         <option value="30000">30 sec</option>
       </select>
     </div>
+    <div class="form-group">
+      <button class="btn btn-primary" onclick="checkForUpdates()">Check for Updates</button>
+      <div id="updateStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
+    </div>
     <button class="btn btn-danger" onclick="reboot()">Restart Controller</button>
   </div>
   
@@ -1178,6 +1182,68 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
       logs: 't, timeSec, bootId, temp, hum, h, a, f, s',
       bootTimestamps: 'bootId, startUnix, duration'
     }).upgrade(async () => { await db.logs.clear(); await db.bootTimestamps.clear();});
+
+    async function checkForUpdates() {
+      const button = event.target;
+      const statusDiv = document.getElementById('updateStatus');
+      
+      // Disable button and show loading state
+      button.disabled = true;
+      button.textContent = 'Checking...';
+      statusDiv.style.display = 'none';
+      statusDiv.className = '';
+      statusDiv.textContent = '';
+      
+      try {
+        // First check if update is available
+        const checkRes = await fetch('/ota/check');
+        const checkData = await checkRes.json();
+        
+          if (checkData.update) {
+          if (confirm(`Update available!\nCurrent: ${checkData.currentVersion}\nLatest: ${checkData.latestVersion}\n\nDownload and install now?`)) {
+            // User confirmed - apply update
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'alert alert-info';
+            statusDiv.textContent = 'Downloading and applying update...';
+            
+            const applyRes = await fetch('/ota/apply', {
+              method: 'POST'
+            });
+            const applyData = await applyRes.json();
+            
+            if (applyData.status === 'applying') {
+              statusDiv.className = 'alert alert-success';
+              statusDiv.textContent = 'Update applied! Device will reboot shortly...';
+              
+              // Wait a bit then reload to show reboot message
+              setTimeout(() => {
+                location.reload();
+              }, 3000);
+            } else {
+              statusDiv.className = 'alert alert-danger';
+              statusDiv.textContent = 'Error: ' + (applyData.message || 'Unknown error');
+            }
+          } else {
+            // User cancelled
+            button.disabled = false;
+            button.textContent = 'Check for Updates';
+          }
+        } else {
+          // No update available
+          button.disabled = false;
+          button.textContent = 'Check for Updates';
+          statusDiv.style.display = 'block';
+          statusDiv.className = 'alert alert-success';
+          statusDiv.textContent = 'No updates available. You are running the latest version.';
+        }
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Check for Updates';
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.textContent = 'Error checking for updates: ' + error.message;
+      }
+    }
 
     async function mainLoop() {
       try {
