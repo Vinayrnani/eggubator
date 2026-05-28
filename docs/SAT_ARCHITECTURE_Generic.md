@@ -16,7 +16,7 @@ SAT creates a **Virtual RTC** by synchronising time between MICROCONTROLLER and 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        PROJECT_NAME System                        │
+│                        PROJECT_NAME System                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │   ┌─────────────┐          ┌────────────────────────────┐    │
@@ -33,7 +33,7 @@ SAT creates a **Virtual RTC** by synchronising time between MICROCONTROLLER and 
 │   │ └────┬────┘ │         │ └─────────────────────┘   │    │
 │   │      │      │         │      ▲                     │    │
 │   │ ┌────▼────┐ │   Sync  │      │                     │    │
-│   │ │EEPROM   │ │◄────────┴──────┘                     │    │
+│   │ │GENERIC_STORAGE   │ │◄────────┴──────┘                     │    │
 │   │ │         │ │                                    │    │
 │   │ │lastKnown│ │  Source of Truth                   │    │
 │   │ │BootId   │ │                                    │    │
@@ -60,7 +60,7 @@ struct BootTimestamp {
 
 The table is held in RAM and prepared on boot from:
 - Flash log sectors: read boot IDs and duration (last log entry's timeSec)
-- EEPROM lastKnownStartUnix: critical for calculating startUnix of all previous boots
+- GENERIC_STORAGE lastKnownStartUnix: critical for calculating startUnix of all previous boots
 
 **How previous boots' startUnix is calculated:**
 ```
@@ -75,7 +75,7 @@ boot[N-1].startUnix = lastKnownStartUnix - duration[N] - duration[N-1] - ...
 **State Variables:**
 ```
 (currentBootId retrieved from GENERIC_STORAGE_BOOT_ID on demand)
-startTimestamp     - Unix timestamp when batch started (stored in EEPROM DeviceSettings)
+startTimestamp     - Unix timestamp when batch started (stored in GENERIC_STORAGE DeviceSettings)
 ```
 
 **No stored elapsedSeconds** - Derived on-demand from bootTable + millis():
@@ -84,7 +84,7 @@ elapsedSeconds = bootTable[currentBootId].startUnix + (millis() / 1000) - startT
                = (currentBoot.startUnix - startTimestamp) + bootUptimeSec
 ```
 
-**EEPROM Storage (essential for boot time calculation):**
+**GENERIC_STORAGE Storage (essential for boot time calculation):**
 
 | Address | Size | Purpose |
 |---------|------|---------|
@@ -92,7 +92,7 @@ elapsedSeconds = bootTable[currentBootId].startUnix + (millis() / 1000) - startT
 | GENERIC_STORAGE_LAST_KNOWN_START_UNIX | 4 bytes | Previous boot's startUnix (synced from browser, used to calculate ALL previous boots' start times) |
 | GENERIC_STORAGE_SETTINGS_MAGIC | struct | Contains `startTimestamp` (fixed Unix timestamp when batch started) |
 
-**Note:** Duration is retrieved from flash (last log entry's timeSec), not stored in EEPROM.
+**Note:** Duration is retrieved from flash (last log entry's timeSec), not stored in GENERIC_STORAGE.
 
 **Critical:** These values form the anchor for calculating startUnix of all previous boots. Without this, previous boots would have unknown timestamps.
 
@@ -137,9 +137,9 @@ uint32_t getBootUptime() {
   return millis() / 1000;
 }
 
-// Get current boot ID (from EEPROM)
+// Get current boot ID (from GENERIC_STORAGE)
 uint8_t getCurrentBootId() {
-  return EEPROM.read(GENERIC_STORAGE_BOOT_ID);
+  return GENERIC_STORAGE.read(GENERIC_STORAGE_BOOT_ID);
 }
 
 // Get elapsed seconds since batch started
@@ -167,17 +167,17 @@ bool isLockdown() {
 
 **Important:** If `startUnix` is 0 (unknown), the derived elapsedSeconds will be incorrect.
 This is okay because:
-- ESP control logic uses millis() only (not absolute time)
+- MICROCONTROLLER control logic uses millis() only (not absolute time)
 - Display shows "Day --" until sync provides real timestamps
 - On first browser sync, all timestamps are corrected
 
-**Key Insight:** No continuous counter, no periodic EEPROM writes, no boot-time loading.
+**Key Insight:** No continuous counter, no periodic GENERIC_STORAGE writes, no boot-time loading.
 All values calculated on-demand from bootTable + millis().
 
 ### API Endpoints
 
 #### GET /timestamps
-Returns ESP's current timestamp knowledge.
+Returns MICROCONTROLLER's current timestamp knowledge.
 
 **Response:**
 ```json
@@ -198,9 +198,9 @@ Note: Duration retrieved from flash, not sent over API.
 Note: `elapsedSeconds`, `currentDay` are calculated on-demand, not stored.
 
 #### PUT /timestamps
-Browser sends its complete boot history. ESP replaces its RAM table completely and saves fallback to EEPROM.
+Browser sends its complete boot history. MICROCONTROLLER replaces its RAM table completely and saves fallback to GENERIC_STORAGE.
 
-**Request:** (duration not sent - ESP retrieves from flash)
+**Request:** (duration not sent - MICROCONTROLLER retrieves from flash)
 ```json
 [
   { "bootId": 1, "startUnix": 1703808000 },
@@ -211,7 +211,7 @@ Browser sends its complete boot history. ESP replaces its RAM table completely a
 ]
 ```
 
-**ESP Response:**
+**MICROCONTROLLER Response:**
 ```json
 {
   "synced": true,
@@ -225,7 +225,7 @@ Browser sends its complete boot history. ESP replaces its RAM table completely a
 
 **On receiving PUT /timestamps:**
 1. Replace entire RAM bootTable[] with browser's data
-2. Update lastKnownBootId, lastKnownStartUnix in EEPROM (new anchor)
+2. Update lastKnownBootId, lastKnownStartUnix in GENERIC_STORAGE (new anchor)
 3. Calculate drift from current boot's entry
 4. Return sync confirmation
 
@@ -238,7 +238,7 @@ On MICROCONTROLLER boot, the RAM timestamp table is prepared by scanning flash l
 │                    Boot: Table Preparation                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   1. Read lastKnownStartUnix, lastKnownBootId from EEPROM       │
+│   1. Read lastKnownStartUnix, lastKnownBootId from GENERIC_STORAGE       │
 │      (This is the anchor for calculating all previous boots)    │
 │                                                                  │
 │   2. Scan flash sectors: read bootId and duration (last timeSec)│
@@ -274,13 +274,13 @@ On MICROCONTROLLER boot, the RAM timestamp table is prepared by scanning flash l
 **Table Preparation Pseudocode:**
 ```cpp
 void prepareBootTable() {
-  uint8_t sectorCount = EEPROM.read(GENERIC_STORAGE_CURRENT_SECTOR) + 1;
+  uint8_t sectorCount = GENERIC_STORAGE.read(GENERIC_STORAGE_CURRENT_SECTOR) + 1;
   
-  // Read lastKnown from EEPROM (anchor for timeline calculation)
+  // Read lastKnown from GENERIC_STORAGE (anchor for timeline calculation)
   uint32_t lastKnownStartUnix;
   uint8_t lastKnownBootId;
-  EEPROM.get(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
-  lastKnownBootId = EEPROM.read(GENERIC_STORAGE_LAST_KNOWN_BOOT_ID);
+  GENERIC_STORAGE.get(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, lastKnownStartUnix);
+  lastKnownBootId = GENERIC_STORAGE.read(GENERIC_STORAGE_LAST_KNOWN_BOOT_ID);
   
   // Allocate dynamic array based on flash sectors + 1 for current boot
   bootTable = (BootTimestamp*)malloc((sectorCount + 1) * sizeof(BootTimestamp));
@@ -324,7 +324,7 @@ void prepareBootTable() {
   }
   
   // For current boot (not in flash yet): calculate from previous boot
-  uint8_t currentBootId = EEPROM.read(GENERIC_STORAGE_BOOT_ID);
+  uint8_t currentBootId = GENERIC_STORAGE.read(GENERIC_STORAGE_BOOT_ID);
   uint32_t currentStartUnix = 0;
   if (bootTableCount > 0) {
      currentStartUnix = bootTable[bootTableCount - 1].startUnix + bootTable[bootTableCount - 1].duration;
@@ -336,7 +336,7 @@ void prepareBootTable() {
 }
 ```
 
-**Key Point:** bootTable is the source of truth for the ESP. The timeline is dynamically calculated from the EEPROM anchor. It gets fully reconciled when the browser syncs.
+**Key Point:** bootTable is the source of truth for the MICROCONTROLLER. The timeline is dynamically calculated from the GENERIC_STORAGE anchor. It gets fully reconciled when the browser syncs.
 
 **Duration Retrieval from Flash:**
 
@@ -356,13 +356,13 @@ Flash Sector N:
 
 ### Drift Calculation Logic
 
-The ESP's `millis()` runs slightly faster than real time (~5 seconds per hour). The drift is detected on browser sync:
+The MICROCONTROLLER's `millis()` runs slightly faster than real time (~5 seconds per hour). The drift is detected on browser sync:
 
 #### On Browser Sync:
 
 1. **Browser sends:** current boot's actual startUnix (from its history)
 
-2. **ESP calculates:** 
+2. **MICROCONTROLLER calculates:** 
    ```
    currentUnix = Browser's current Unix time (from Date header or JS Date)
    currentUptime = millis() / 1000
@@ -377,8 +377,8 @@ The ESP's `millis()` runs slightly faster than real time (~5 seconds per hour). 
 
 4. **If drift > 5 seconds:**
    ```
-   // Update EEPROM with correct value
-   EEPROM.put(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, browserCalculatedStartUnix);
+   // Update GENERIC_STORAGE with correct value
+   GENERIC_STORAGE.put(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, browserCalculatedStartUnix);
    
    // Update RAM table
    bootTable[currentBootId].startUnix = browserCalculatedStartUnix;
@@ -413,7 +413,7 @@ Browser                    MICROCONTROLLER
   │   load bootStartCache)    │
   │                           │
   │──── syncTime ────────────►│
-  │    (corrects ESP's        │
+  │    (corrects MICROCONTROLLER's        │
   │     startUnix for         │
   │     current boot)         │
   │                           │
@@ -431,7 +431,7 @@ Browser                    MICROCONTROLLER
   │  absolute timestamps     │
 ```
 
-**Critical Detail:** After syncTime corrects the ESP's boot startUnix, the browser
+**Critical Detail:** After syncTime corrects the MICROCONTROLLER's boot startUnix, the browser
 must re-fetch /timestamps to update its local bootStartCache. Without this
 re-fetch, bootStartCache still holds the stale startUnix=0 for the current boot,
 causing decodeLogs() to compute timestamps near epoch 0 (1970) — particularly
@@ -441,40 +441,40 @@ after a new batch where the index page is loaded for the first time.
 
 If browser has NO previous logs (first connection):
 
-1. ESP provides its assumed timestamps (startUnix=0 for current boot)
+1. MICROCONTROLLER provides its assumed timestamps (startUnix=0 for current boot)
 2. Browser syncs time via syncTime, which corrects the current boot's startUnix
 3. Browser re-fetches /timestamps to update bootStartCache with corrected value
 4. Browser displays correct timestamps
 5. If another browser with history connects later, it propagates corrected timestamps
 
-#### 3. ESP Fresh Flash (No EEPROM Data)
+#### 3. MICROCONTROLLER Fresh Flash (No GENERIC_STORAGE Data)
 
-If ESP has no startTimestamp (factory reset):
+If MICROCONTROLLER has no startTimestamp (factory reset):
 
 1. Browser is source of truth
 2. Take startTimestamp from browser's oldest log
-3. Initialize ESP's lastKnown values
+3. Initialize MICROCONTROLLER's lastKnown values
 
 #### 4. Conflict Resolution (Browser-Side Merge)
 
-ESP operates simply: `PUT /timestamps` blindly replaces its RAM table. Therefore, conflict resolution happens **inside the browser** before the PUT request:
+MICROCONTROLLER operates simply: `PUT /timestamps` blindly replaces its RAM table. Therefore, conflict resolution happens **inside the browser** before the PUT request:
 
-1. Browser `GET /timestamps` to receive ESP's best-guess calculated timeline.
+1. Browser `GET /timestamps` to receive MICROCONTROLLER's best-guess calculated timeline.
 2. Browser reads its Dexie DB.
 3. Browser merges the two timelines using **Newer Wins**:
    - If `dexie.startUnix > esp.startUnix` → Keep Dexie value (typically true for older boots)
-   - If `esp.startUnix > dexie.startUnix` → Accept ESP value
-   - If boot is missing in Dexie → Accept ESP value
-4. Browser `PUT /timestamps` the final reconciled timeline back to ESP.
+   - If `esp.startUnix > dexie.startUnix` → Accept MICROCONTROLLER value
+   - If boot is missing in Dexie → Accept MICROCONTROLLER value
+4. Browser `PUT /timestamps` the final reconciled timeline back to MICROCONTROLLER.
 
-This allows a new browser (empty history) to safely adopt the ESP's calculated timeline, while an established browser can correct any accumulated drift.
+This allows a new browser (empty history) to safely adopt the MICROCONTROLLER's calculated timeline, while an established browser can correct any accumulated drift.
 
 ### Time Handling for Critical Operations
 
 | Operation | Time Source | Mechanism |
 |-----------|-------------|-----------|
-| Incubation day | `getElapsedSeconds() / 86400` | Derived on-demand |
-| Egg turning | millis() interval | `millis() - lastServoTurn` |
+| Operational day | `getElapsedSeconds() / 86400` | Derived on-demand |
+| Scheduled intervals | millis() interval | `millis() - lastServoTurn` |
 | Data logging | timeSec within boot | Relative within boot session |
 | Uptime display | millis() | `millis() / 1000` |
 | Chart display | Dexie absolute timestamps | Browser converts to relative |
@@ -484,30 +484,30 @@ This allows a new browser (empty history) to safely adopt the ESP's calculated t
 ### Preserving Time Across Power Cycles
 
 1. **On Boot - Table Preparation**:
-   - Read lastKnownStartUnix, lastKnownBootId from EEPROM
+   - Read lastKnownStartUnix, lastKnownBootId from GENERIC_STORAGE
    - Scan flash sectors to get bootId and duration for each boot
    - Calculate startUnix chain backwards from lastKnown (see pseudocode above)
-   - This is essential - without EEPROM values, previous boots have no timestamps
+   - This is essential - without GENERIC_STORAGE values, previous boots have no timestamps
 
-2. **On Sync - Save to EEPROM only when drift > 5 seconds**:
+2. **On Sync - Save to GENERIC_STORAGE only when drift > 5 seconds**:
    ```cpp
    // Only save when drift detected, not on every sync
    if (drift > 5) {
-     EEPROM.write(GENERIC_STORAGE_LAST_KNOWN_BOOT_ID, currentBootId);
-     EEPROM.put(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, correctedStartUnix);
-     EEPROM.commit();
+     GENERIC_STORAGE.write(GENERIC_STORAGE_LAST_KNOWN_BOOT_ID, currentBootId);
+     GENERIC_STORAGE.put(GENERIC_STORAGE_LAST_KNOWN_START_UNIX, correctedStartUnix);
+     GENERIC_STORAGE.commit();
    }
    // Duration retrieved from flash on next boot
    ```
 
-**Key Change:** No more `elapsedSeconds++` every second. No more periodic EEPROM writes.
+**Key Change:** No more `elapsedSeconds++` every second. No more periodic GENERIC_STORAGE writes.
 Time is derived on-demand from bootTable + millis().
 
 ### Edge Cases
 
 #### Scenario 1: Browser disconnected for 1 week
 ```
-- ESP continues using millis() for uptime
+- MICROCONTROLLER continues using millis() for uptime
 - millis() drifts ~120 seconds (5 sec/hour × 24 hours)
 - On reconnect: calculate drift from bootTable, apply correction
 - Update bootTable[currentBootId].startUnix if drift > 5 sec
@@ -525,19 +525,19 @@ Time is derived on-demand from bootTable + millis().
 #### Scenario 3: User manually adjusts day
 ```
 - User clicks "Day -1" in settings
-- ESP: startTimestamp += 86400 (shifts timeline forward, reducing elapsed day)
-- ESP: writes updated startTimestamp to EEPROM (DeviceSettings)
+- MICROCONTROLLER: startTimestamp += 86400 (shifts timeline forward, reducing elapsed day)
+- MICROCONTROLLER: writes updated startTimestamp to GENERIC_STORAGE (DeviceSettings)
 - On next sync: browser receives adjusted timeline
 ```
 
-#### Scenario 4: ESP boots multiple times before browser connects
+#### Scenario 4: MICROCONTROLLER boots multiple times before browser connects
 ```
 - Boot 1: bootTable[0] = {bootId:1, startUnix:0, duration:0}
 - Boot 2: bootTable[1] = {bootId:2, startUnix:0, duration:0}  
 - Boot 3: bootTable[2] = {bootId:3, startUnix:0, duration:0}
-- ESP continues functioning with millis() for all timing
+- MICROCONTROLLER continues functioning with millis() for all timing
 - Browser connects: sends real timestamps from its history
-- ESP: bootTable replaced with correct startUnix values
+- MICROCONTROLLER: bootTable replaced with correct startUnix values
 - Display shows correct Day after sync
 ```
 
@@ -545,10 +545,10 @@ Time is derived on-demand from bootTable + millis().
 ```
 - User clicks "Start New Batch"
 - Browser sends: action=newBatch&timestamp=<currentUnix>
-- ESP: new boot entry in bootTable with new bootId
-- ESP: bootTable[newBootId].startUnix = currentUnix, duration = 0
-- ESP: writes currentUnix to startTimestamp in EEPROM (DeviceSettings)
-- ESP: updates lastKnown values in EEPROM
+- MICROCONTROLLER: new boot entry in bootTable with new bootId
+- MICROCONTROLLER: bootTable[newBootId].startUnix = currentUnix, duration = 0
+- MICROCONTROLLER: writes currentUnix to startTimestamp in GENERIC_STORAGE (DeviceSettings)
+- MICROCONTROLLER: updates lastKnown values in GENERIC_STORAGE
 ```
 
 ### Advantages
@@ -557,7 +557,7 @@ Time is derived on-demand from bootTable + millis().
 2. **Virtual RTC via Browser** - Accurate absolute timestamps when connected
 3. **Drift Compensation** - Automatic correction for millis() drift
 4. **Multi-browser Support** - History propagates to new browsers
-5. **Offline Operation** - ESP continues working without browser
+5. **Offline Operation** - MICROCONTROLLER continues working without browser
 
 ### Limitations
 
@@ -573,7 +573,7 @@ Time is derived on-demand from bootTable + millis().
 │                        Time Synchronization                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│   Step 1: ESP → Browser (GET /timestamps)                          │
+│   Step 1: MICROCONTROLLER → Browser (GET /timestamps)                          │
 │   ┌─────────┐                    ┌──────────┐                      │
 │   │ MICROCONTROLLER │ ── bootId=5 ──────►│  Browser │                      │
 │   │         │    startUnix=1704  │          │                      │
@@ -591,15 +591,15 @@ Time is derived on-demand from bootTable + millis().
 │   │  History │ ── returns ────► │          │                      │
 │   │ [5 rows] │                  └────┬─────┘                      │
 │                                        │                            │
-│   Step 4: Browser → ESP (PUT /timestamps)                         │
+│   Step 4: Browser → MICROCONTROLLER (PUT /timestamps)                         │
 │   ┌──────────┐ ── history[5] ─►┌─────────┐                      │
 │   │  Browser │                  │ MICROCONTROLLER  │                      │
 │   │          │ ◄─ synced=true ─ │          │                      │
 │   └──────────┘                  └─────────┘                      │
 │                                                                     │
-│   Step 5: ESP updates EEPROM                                       │
+│   Step 5: MICROCONTROLLER updates GENERIC_STORAGE                                       │
 │   ┌─────────┐   write to    ┌──────────┐                          │
-│   │ MICROCONTROLLER │ ◄── EEPROM ── │  EEPROM  │                          │
+│   │ MICROCONTROLLER │ ◄── GENERIC_STORAGE ── │  GENERIC_STORAGE  │                          │
 │   └─────────┘              └──────────┘                          │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -607,12 +607,12 @@ Time is derived on-demand from bootTable + millis().
 
 ### Implementation Checklist
 
-- [ ] Add `lastKnownBootId` and `lastKnownStartUnix` to EEPROM
+- [ ] Add `lastKnownBootId` and `lastKnownStartUnix` to GENERIC_STORAGE
 - [ ] Implement GET /timestamps endpoint
 - [ ] Implement PUT /timestamps endpoint
 - [ ] Add drift calculation on every sync
-- [ ] Update EEPROM when drift > 5 seconds
-- [ ] On dashboard load: fetch ESP timestamps → load Dexie → sync
+- [ ] Update GENERIC_STORAGE when drift > 5 seconds
+- [ ] On dashboard load: fetch MICROCONTROLLER timestamps → load Dexie → sync
 - [ ] Handle first-connection scenario
 - [ ] Handle fresh-flash scenario
 - [ ] Add conflict resolution (newer wins)
