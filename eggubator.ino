@@ -1039,6 +1039,13 @@ void setup() {
     server.on(EMBEDDED_ASSETS[i].path, handleLibAsset);
   }
   httpUpdater.setup(&server);
+  // Catch-all: redirect captive portal probes (generate_204, connecttest.txt, etc.)
+  // to the dashboard so the phone shows a captive portal notification instead of
+  // keeping all traffic on cellular data.
+  server.onNotFound([]() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
   server.begin();
   
   initSectorPointers();
