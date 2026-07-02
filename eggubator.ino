@@ -1085,8 +1085,9 @@ void setup() {
 void loop() {
   handleWiFi();
   server.handleClient();
+  // Start mDNS in STA or AP mode so eggubator.local resolves regardless
   static bool mdnsStarted = false;
-  if (isWiFiConnected() && !mdnsStarted) {
+  if (!mdnsStarted && WiFi.getMode() != WIFI_OFF) {
     mdnsStarted = MDNS.begin("EGGubator");
   }
   if (mdnsStarted) MDNS.update();
