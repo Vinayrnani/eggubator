@@ -1221,23 +1221,31 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
             statusDiv.className = 'alert alert-info';
             statusDiv.textContent = 'Downloading and applying update...';
             
-            const applyRes = await fetch('/ota/apply', {
-              method: 'POST'
-            });
-            const applyData = await applyRes.json();
-            
-            if (applyData.status === 'applying') {
-              statusDiv.className = 'alert alert-success';
-              statusDiv.textContent = 'Update applied! Device will reboot shortly...';
+            try {
+              const applyRes = await fetch('/ota/apply', {
+                method: 'POST'
+              });
+              const applyData = await applyRes.json();
               
-              // Wait a bit then reload to show reboot message
-              setTimeout(() => {
-                location.reload();
-              }, 3000);
-            } else {
-              statusDiv.className = 'alert alert-danger';
-              statusDiv.textContent = 'Error: ' + (applyData.message || 'Unknown error');
+              if (applyData.status === 'error') {
+                statusDiv.className = 'alert alert-danger';
+                statusDiv.textContent = 'Error: ' + (applyData.message || 'Unknown error');
+                button.disabled = false;
+                button.textContent = 'Check for Updates';
+                return;
+              }
+            } catch (e) {
+              // Connection dropped — device is likely rebooting with update
+              // This is the expected success path for OTA
             }
+            
+            statusDiv.className = 'alert alert-success';
+            statusDiv.textContent = 'Update applied! Device will reboot shortly...';
+            
+            // Wait a bit then reload to show reboot message
+            setTimeout(() => {
+              location.reload();
+            }, 3000);
           } else {
             // User cancelled
             button.disabled = false;

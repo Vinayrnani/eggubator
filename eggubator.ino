@@ -495,11 +495,20 @@ void handleControl() {
 }
 
 void handleOtaCheck() {
-  bool updateAvailable = checkForUpdate();
   String current = FIRMWARE_VERSION;
-  String latest = "unknown";
+  String latest = "";
   
-  // Fetch latest version for response
+  // Parse current version once
+  int cMaj = 0, cMin = 0, cPat = 0;
+  int cFirstDot = current.indexOf('.');
+  int cLastDot = current.lastIndexOf('.');
+  if (cFirstDot > 0 && cLastDot > cFirstDot) {
+    cMaj = current.substring(0, cFirstDot).toInt();
+    cMin = current.substring(cFirstDot + 1, cLastDot).toInt();
+    cPat = current.substring(cLastDot + 1).toInt();
+  }
+  
+  // Single HTTPS call for version check
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -507,12 +516,10 @@ void handleOtaCheck() {
     int httpCode = http.GET();
     if (httpCode == 200) {
       String payload = http.getString();
-      http.end();
       
-      // Parse JSON to extract tag_name
       int tagStart = payload.indexOf("\"tag_name\":\"");
       if (tagStart != -1) {
-        tagStart += 12; // Length of "\"tag_name\":\""
+        tagStart += 12;
         int tagEnd = payload.indexOf('\"', tagStart);
         if (tagEnd != -1) {
           latest = payload.substring(tagStart, tagEnd);
@@ -522,14 +529,27 @@ void handleOtaCheck() {
     http.end();
   }
   
-  String json = "{\"update\":" + String(updateAvailable ? "true" : "false") + 
-                ",\"currentVersion\":\"" + current + 
+  bool hasUpdate = false;
+  if (latest.length() > 0) {
+    String v = latest;
+    if (v.startsWith("v")) v = v.substring(1);
+    
+    int vMaj = v.substring(0, v.indexOf('.')).toInt();
+    int vMin = v.substring(v.indexOf('.') + 1, v.lastIndexOf('.')).toInt();
+    int vPat = v.substring(v.lastIndexOf('.') + 1).toInt();
+    
+    if (vMaj > cMaj) hasUpdate = true;
+    else if (vMaj == cMaj && vMin > cMin) hasUpdate = true;
+    else if (vMaj == cMaj && vMin == cMin && vPat > cPat) hasUpdate = true;
+  }
+  
+  String json = "{\"update\":" + String(hasUpdate ? "true" : "false") +
+                ",\"currentVersion\":\"" + current +
                 "\",\"latestVersion\":\"" + latest + "\"}";
   server.send(200, "application/json", json);
 }
 
 void handleOtaApply() {
-  // Prevent concurrent updates
   static bool updateInProgress = false;
   if (updateInProgress) {
     server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"Update already in progress\"}");
@@ -537,9 +557,25 @@ void handleOtaApply() {
   }
   
   updateInProgress = true;
-  server.send(200, "application/json", "{\"status\":\"applying\",\"message\":\"Download and applying update...\"}");
-  performUpdate();
-  // Note: performUpdate() calls ESP.restart() on success
+  
+  bool success = performUpdate();
+  
+  if (success) {
+    // performUpdate() calls ESP.restart() — never reaches here
+    return;
+  }
+  
+  // Failure: reset flag so user can retry
+  updateInProgress = false;
+  
+  String errorMsg = "Update failed";
+  int lastErr = ESPhttpUpdate.getLastError();
+  if (lastErr != 0) {
+    errorMsg += ": " + ESPhttpUpdate.getLastErrorString();
+  }
+  
+  String json = "{\"status\":\"error\",\"message\":\"" + errorMsg + "\"}";
+  server.send(200, "application/json", json);
 }
 
 void handleSettingsApi() {
