@@ -68,7 +68,7 @@ void handleWiFi() {
     case WF_RECONNECTING:
       if (WiFi.status() == WL_CONNECTED) {
         wifiState = WF_CONNECTED;
-      } else if (millis() - wifiStateTime > 30000) {
+      } else if (millis() - wifiStateTime > 15000) {
         // Auto-reconnect timed out, retry from scratch with saved creds
         WiFi.mode(WIFI_STA);
         WiFi.begin(wifiSsid, wifiPassword);
@@ -79,8 +79,8 @@ void handleWiFi() {
 
     case WF_AP:
       dnsServer.processNextRequest();
-      // Every 30s scan for known networks
-      if (millis() - wifiStateTime >= 30000) {
+      // Every 15s scan for known networks
+      if (millis() - wifiStateTime >= 15000) {
         int n = WiFi.scanNetworks();
         bool savedFound = false;
         bool defaultFound = false;

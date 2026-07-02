@@ -312,6 +312,7 @@ void handleLibAsset() {
   for (size_t i = 0; i < EMBEDDED_ASSETS_COUNT; i++) {
     if (path == EMBEDDED_ASSETS[i].path) {
       server.sendHeader("Content-Encoding", "gzip");
+      server.sendHeader("Cache-Control", "public, max-age=31536000, immutable");
       server.send_P(200, EMBEDDED_ASSETS[i].mime_type,
                     (const char*)EMBEDDED_ASSETS[i].data,
                     EMBEDDED_ASSETS[i].len);
