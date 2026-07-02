@@ -20,6 +20,7 @@
 #include "updates.h"
 #include "web_ui.h"
 #include "sector_viewer.h"
+#include "embedded_assets.h"
 #include "sat_manager.h"
 
 extern bool useMockSensor;
@@ -110,6 +111,16 @@ struct DeviceSettings {
   int8_t angleAdjustMax;
 };
 
+// EEPROM address for WiFi credentials (separate from DeviceSettings)
+#define EEPROM_WIFI_ADDR 200
+#define WIFI_MAGIC_VAL 0xAC
+
+struct WifiSettings {
+  uint8_t magic;
+  char ssid[33];
+  char password[65];
+};
+
 // ============================================
 // AUTO CONTROL LOGIC
 // ============================================
@@ -180,6 +191,29 @@ void loadSettings() {
     startTimestamp = 0;
     saveSettings();
   }
+}
+
+void loadWifiCredentials() {
+  WifiSettings settings;
+  EEPROM.get(EEPROM_WIFI_ADDR, settings);
+  if (settings.magic == WIFI_MAGIC_VAL && settings.ssid[0] != '\0') {
+    strncpy(wifiSsid, settings.ssid, 32);
+    wifiSsid[32] = '\0';
+    strncpy(wifiPassword, settings.password, 64);
+    wifiPassword[64] = '\0';
+  }
+  // else: keep defaults (already set in wifi_manager.h globals)
+}
+
+void saveWifiCredentials(const char* ssid, const char* password) {
+  WifiSettings settings;
+  settings.magic = WIFI_MAGIC_VAL;
+  strncpy(settings.ssid, ssid, 32);
+  settings.ssid[32] = '\0';
+  strncpy(settings.password, password, 64);
+  settings.password[64] = '\0';
+  EEPROM.put(EEPROM_WIFI_ADDR, settings);
+  EEPROM.commit();
 }
 
 // ============================================
@@ -270,6 +304,21 @@ void handleSettingsPage() {
 
 void handleDexiePage() {
   server.send(200, "text/html; charset=utf-8", DEXIE_HTML);
+}
+
+// Serve embedded gzip'd CDN assets from PROGMEM (no internet needed)
+void handleLibAsset() {
+  String path = server.uri();
+  for (size_t i = 0; i < EMBEDDED_ASSETS_COUNT; i++) {
+    if (path == EMBEDDED_ASSETS[i].path) {
+      server.sendHeader("Content-Encoding", "gzip");
+      server.send_P(200, EMBEDDED_ASSETS[i].mime_type,
+                    (const char*)EMBEDDED_ASSETS[i].data,
+                    EMBEDDED_ASSETS[i].len);
+      return;
+    }
+  }
+  server.send(404, "text/plain", "Not found");
 }
 
 void handleStatus() {
@@ -563,6 +612,32 @@ void handleSettingsApi() {
     } else {
       server.send(400, "text/plain", "Invalid off time (must be 5-30s, multiple of 5)");
     }
+  } else if (server.hasArg("wifiSsid")) {
+    String ssid = server.arg("wifiSsid");
+    String password = server.arg("wifiPassword");
+    if (ssid.length() == 0) {
+      // Clear credentials from EEPROM, reset to defaults
+      WifiSettings clearSettings;
+      clearSettings.magic = 0;
+      EEPROM.put(EEPROM_WIFI_ADDR, clearSettings);
+      EEPROM.commit();
+      strncpy(wifiSsid, DEFAULT_WIFI_SSID, 32);
+      wifiSsid[32] = '\0';
+      strncpy(wifiPassword, DEFAULT_WIFI_PASSWORD, 64);
+      wifiPassword[64] = '\0';
+      server.send(200, "text/plain", "WiFi credentials cleared");
+    } else if (ssid.length() > 32) {
+      server.send(400, "text/plain", "SSID too long (max 32 chars)");
+    } else if (password.length() > 64) {
+      server.send(400, "text/plain", "Password too long (max 64 chars)");
+    } else {
+      strncpy(wifiSsid, ssid.c_str(), 32);
+      wifiSsid[32] = '\0';
+      strncpy(wifiPassword, password.c_str(), 64);
+      wifiPassword[64] = '\0';
+      saveWifiCredentials(wifiSsid, wifiPassword);
+      server.send(200, "text/plain", "WiFi credentials saved");
+    }
   } else if (server.hasArg("action")) {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
@@ -623,9 +698,11 @@ void handleSettingsApi() {
 ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                    ",\"pulseOffTime\":" + String(PULSE_OFF_TIME) +
                    ",\"startTimestamp\":" + String(startTimestamp) +
-                  ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
-                  ",\"currentDay\":" + String(getCurrentDay()) +
-                  ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") + "}";
+                   ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
+                   ",\"currentDay\":" + String(getCurrentDay()) +
+                   ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
+                   ",\"wifiSsid\":\"" + String(wifiSsid) + "\"" +
+                   ",\"wifiPassword\":\"" + String(wifiPassword) + "\"}";
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.send(200, "application/json", json);
   }
@@ -899,11 +976,10 @@ void setup() {
   pinMode(SERVO_PIN, OUTPUT);
   digitalWrite(SERVO_PIN, LOW);
 
-  connectWiFi();
+  EEPROM.begin(512);
+  loadWifiCredentials();
 
-  // Start mDNS responder for EGGubator.local
-  if (MDNS.begin("EGGubator")) {
-  }
+  initWiFi();  // non-blocking, no delay loops
 
 
 // Setup web server
@@ -921,12 +997,13 @@ void setup() {
   server.on("/settings/api", handleSettingsApi);
   server.on("/reboot", handleReboot);
   server.on("/timestamps", handleTimestamps);
+  // Register embedded asset routes (gzip'd CDN-free libraries)
+  for (size_t i = 0; i < EMBEDDED_ASSETS_COUNT; i++) {
+    server.on(EMBEDDED_ASSETS[i].path, handleLibAsset);
+  }
   httpUpdater.setup(&server);
   server.begin();
   
-  
-  EEPROM.begin(512);
-
   initSectorPointers();
   currentBootId = recoverBootIdFromFlash();
   prepareBootTable();
@@ -962,9 +1039,13 @@ void setup() {
 // MAIN LOOP
 // ============================================
 void loop() {
-  processDNS();
+  handleWiFi();
   server.handleClient();
-  MDNS.update();
+  static bool mdnsStarted = false;
+  if (isWiFiConnected() && !mdnsStarted) {
+    mdnsStarted = MDNS.begin("EGGubator");
+  }
+  if (mdnsStarted) MDNS.update();
 
   unsigned long currentMillis = millis();
 

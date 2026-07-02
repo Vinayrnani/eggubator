@@ -11,12 +11,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EGGubator Dashboard</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🥚%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <link href="/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <script src="/lib/chartjs/chart.umd.min.js"></script>
+  <script src="/lib/hammerjs/hammer.min.js"></script>
+  <script src="/lib/chartjs-plugin-zoom/chartjs-plugin-zoom.min.js"></script>
+  <script src="/lib/dexie/dexie.min.js"></script>
   <style>
     :root { --primary: #1877f2; --primary-dark: #166fe5; --bg: #fdfaf6; --on: #42b72a; --off: #f02849; --idle: #8a8d91; }
     * { box-sizing: border-box; }
@@ -40,13 +39,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .chart-box { height: 350px; width: 100%; margin-top: 8px; }
     .footer { text-align: center; font-size: 12px; color: #65676b; margin-top: 30px; padding: 20px 0; border-top: 1px solid #e0e4e9; }
     h3 { margin: 0 0 8px 0; font-size: 16px; font-weight: 700; color: #333; }
-    .icon { font-size: 22px; color: #8a8d91; }
-    .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s infinite alternate; }
+    .icon { width: 22px; height: 22px; color: #8a8d91; display: inline-block; }
+    .heater-active { color: #f39c12 !important; animation: bulb-glow 1.5s ease-in-out infinite alternate; }
     .fan-active { color: #42b72a !important; }
-    .atomizer-active { color: var(--primary) !important; animation: spray-puff 0.5s infinite; }
+    .atomizer-active { color: var(--primary) !important; animation: spray-puff 0.6s ease-in-out infinite; }
     .atomizer-idle { filter: grayscale(100%); opacity: 0.5; }
-    @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 2px #f39c12); } 100% { filter: drop-shadow(0 0 12px #f39c12); } }
-    @keyframes spray-puff { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+    @keyframes bulb-glow { 0% { filter: drop-shadow(0 0 3px rgba(243,156,18,0.3)); } 100% { filter: drop-shadow(0 0 8px rgba(243,156,18,0.8)) drop-shadow(0 0 18px rgba(243,156,18,0.3)); } }
+    @keyframes spray-puff { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+    @keyframes svg-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .svg-spin { animation: svg-spin 1.5s linear infinite; transform-origin: center; transform-box: fill-box; }
     #loadingOverlay { position: fixed; inset: 0; background: rgba(253, 250, 246, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
     .spinner { width: 40px; height: 40px; border: 4px solid #e7f3ff; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -86,19 +87,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="stat-card">
           <div class="stat-label">Heater</div>
-          <div class="stat-value" id="heaterStat"><i class="icon fa-solid fa-lightbulb"></i></div>
+          <div class="stat-value" id="heaterStat"><svg class="icon" viewBox="0 0 384 512" fill="currentColor"><path d="M272 384c9.6-31.9 29.5-59.1 49.2-86.2l0 0c5.2-7.1 10.4-14.2 15.4-21.4c19.8-28.5 31.4-63 31.4-100.3C368 78.8 289.2 0 192 0S16 78.8 16 176c0 37.3 11.6 71.9 31.4 100.3c5 7.2 10.2 14.3 15.4 21.4l0 0c19.8 27.1 39.7 54.4 49.2 86.2H272zM192 512c44.2 0 80-35.8 80-80V416H112v16c0 44.2 35.8 80 80 80zM112 176c0 8.8-7.2 16-16 16s-16-7.2-16-16c0-61.9 50.1-112 112-112c8.8 0 16 7.2 16 16s-7.2 16-16 16c-44.2 0-80 35.8-80 80z"/></svg></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Spray</div>
-          <div class="stat-value" id="atomizerStat"><i class="icon fa-solid fa-spray-can"></i></div>
+          <div class="stat-value" id="atomizerStat"><svg class="icon" viewBox="0 0 512 512" fill="currentColor"><path d="M128 0h64c17.7 0 32 14.3 32 32v96H96V32c0-17.7 14.3-32 32-32zM0 256c0-53 43-96 96-96H224c53 0 96 43 96 96V464c0 26.5-21.5 48-48 48H48c-26.5 0-48-21.5-48-48V256zm240 80A80 80 0 1 0 80 336a80 80 0 1 0 160 0zM256 64a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zM384 32a32 32 0 1 1 0 64 32 32 0 1 1 0-64zm64 32a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zm32 64a32 32 0 1 1 0 64 32 32 0 1 1 0-64zM448 256a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zM384 128a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Fan</div>
-          <div class="stat-value" id="fanStat"><i class="icon fa-solid fa-fan"></i></div>
+          <div class="stat-value" id="fanStat"><svg class="icon" viewBox="0 0 512 512" fill="currentColor"><path d="M258.6 0c-1.7 0-3.4 .1-5.1 .5C168 17 115.6 102.3 130.5 189.3c2.9 17 8.4 32.9 15.9 47.4L32 224H29.4C13.2 224 0 237.2 0 253.4c0 1.7 .1 3.4 .5 5.1C17 344 102.3 396.4 189.3 381.5c17-2.9 32.9-8.4 47.4-15.9L224 480v2.6c0 16.2 13.2 29.4 29.4 29.4c1.7 0 3.4-.1 5.1-.5C344 495 396.4 409.7 381.5 322.7c-2.9-17-8.4-32.9-15.9-47.4L480 288h2.6c16.2 0 29.4-13.2 29.4-29.4c0-1.7-.1-3.4-.5-5.1C495 168 409.7 115.6 322.7 130.5c-17 2.9-32.9 8.4-47.4 15.9L288 32V29.4C288 13.2 274.8 0 258.6 0zM256 224a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Turner</div>
-          <div class="stat-value" id="turnerStat"><i class="icon fa-solid fa-arrow-up" id="turnerIcon"></i></div>
+          <div class="stat-value" id="turnerStat"><svg class="icon" viewBox="0 0 384 512" fill="currentColor"><path d="M214.6 41.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 141.2V448c0 17.7 14.3 32 32 32s32-14.3 32-32V141.2L329.4 246.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"/></svg></div>
         </div>
       </div>
     </div>
@@ -413,12 +414,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('targetHum').textContent = d.targetHum.toFixed(1);
       document.getElementById('uptime').textContent = d.uptime;
       
-      document.getElementById('heaterStat').firstElementChild.className = 'icon fa-solid fa-lightbulb ' + (d.heater ? 'heater-active' : '');
-      document.getElementById('atomizerStat').firstElementChild.className = 'icon fa-solid fa-spray-can ' + (d.atomizer ? 'atomizer-active' : 'atomizer-idle');
-      document.getElementById('fanStat').firstElementChild.className = 'icon fa-solid fa-fan ' + (d.fan ? 'fan-active fa-spin' : '');
+      document.getElementById('heaterStat').firstElementChild.setAttribute('class', 'icon' + (d.heater ? ' heater-active' : ''));
+      document.getElementById('atomizerStat').firstElementChild.setAttribute('class', 'icon' + (d.atomizer ? ' atomizer-active' : ' atomizer-idle'));
+      document.getElementById('fanStat').firstElementChild.setAttribute('class', 'icon' + (d.fan ? ' fan-active svg-spin' : ''));
       
       const servoAngle = Math.round(d.servo * 6);
-      document.getElementById('turnerStat').innerHTML = d.servo > 0 ? servoAngle + '°' : '<i class="icon fa-solid fa-arrow-up" id="turnerIcon" style="color: var(--idle);"></i>';
+      document.getElementById('turnerStat').innerHTML = d.servo > 0 ? servoAngle + '°' : '<svg class="icon" viewBox="0 0 384 512" fill="currentColor" style="color: var(--idle);"><path d="M214.6 41.4c-12.5-12.5-32.8-12.5-45.3 0l-160 160c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 141.2V448c0 17.7 14.3 32 32 32s32-14.3 32-32V141.2L329.4 246.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-160-160z"/></svg>';
 
       const badge = document.getElementById('smartBadge');
       badge.textContent = 'Day ' + (d.currentDay + 1) + (d.stageLockdown ? ' - Lockdown Stage' : ' - Incubation Stage');
@@ -1011,7 +1012,7 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
 <head>
   <title>EGGubator - Settings</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="/lib/dexie/dexie.min.js"></script>
   <style>
     body { font-family: system-ui, sans-serif; padding: 15px; background: #f8f9fa; }
     .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -1103,6 +1104,20 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         <option value="14400000">4 hours</option>
         <option value="21600000">6 hours</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>WiFi Network Name (SSID)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="wifiSsid" class="form-control" placeholder="Enter WiFi name" maxlength="32" style="flex:1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>WiFi Password</label>
+      <input type="text" id="wifiPassword" class="form-control" placeholder="Enter WiFi password" maxlength="64">
+    </div>
+    <div class="form-group">
+      <button class="btn btn-primary" onclick="saveWifi()">Save WiFi</button>
+      <div id="wifiStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
     </div>
     <div class="form-group">
       <label>Egg Rotation Speed</label>
@@ -1390,6 +1405,30 @@ async function startNewBatch() {
       }
     }
     
+    async function loadWifiCredentials() {
+      try {
+        const res = await fetch('/settings/api');
+        const m = await res.json();
+        if (m.wifiSsid) document.getElementById('wifiSsid').value = m.wifiSsid;
+        if (m.wifiPassword) document.getElementById('wifiPassword').value = m.wifiPassword;
+      } catch (e) {
+        console.error('Failed to load WiFi credentials', e);
+      }
+    }
+    
+    async function saveWifi() {
+      const wifiSsid = document.getElementById('wifiSsid').value;
+      const wifiPassword = document.getElementById('wifiPassword').value;
+      const resp = await fetch(`/settings/api?wifiSsid=${encodeURIComponent(wifiSsid)}&wifiPassword=${encodeURIComponent(wifiPassword)}`);
+      const msg = document.getElementById('wifiStatus');
+      msg.textContent = await resp.text();
+      msg.style.display = 'block';
+      msg.style.background = '#d4edda';
+      msg.style.color = '#155724';
+      setTimeout(() => { msg.style.display = 'none'; }, 3000);
+    }
+    
+    loadWifiCredentials();
     mainLoop();
    </script>
  </body>
@@ -1402,8 +1441,8 @@ const char DEXIE_HTML[] PROGMEM = R"rawliteral(
 <head>
   <title>EGGubator - Dexie DB</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="/lib/chartjs/chart.umd.min.js"></script>
+  <script src="/lib/dexie/dexie.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/indexeddb-debug-bar@latest/dist/browser/indexeddb-debug-bar-browser.umd.js"></script>
   <style>
     body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f0f2f5; }
