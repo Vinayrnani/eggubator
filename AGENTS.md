@@ -114,7 +114,7 @@ WF_CONNECTED ← (auto-reconnect) → WF_RECONNECTING (15s grace)   scan every 1
 ## Key Architecture Notes
 
 - **Timing globals** (`LOG_INTERVAL`, `EGG_TURN_INTERVAL`, `PULSE_ON/OFF_TIME`, `TARGET_TEMP/HUMIDITY`) are web-modifiable, not compile-time constants.
-- **SAT**: browser syncs timeline across power cycles via `/timestamps` (GET/PUT). `startTimestamp` + `getElapsedSeconds()` = incubation day.
+- **SAT**: browser syncs timeline across power cycles via `/timestamps` (GET/PUT). `batchStartUnix` + `getElapsedSeconds()` = incubation day.
 - **Servo**: 32 steps × 6°, center at step 15 (90°). Stage lockdown (day 18+) disables turning and moves servo to center.
 - **DHT fallback**: if `isnan()`, returns last valid reading; temp/hum validation also requires > 0.
 - **Servo pin (D5=GPIO14) held LOW during boot** to suppress SPI noise — must happen before any other pin init on GPIO14.

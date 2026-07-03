@@ -52,7 +52,7 @@ async function main() {
     console.log(`Device:     ${status.ip} (v${status.version})`);
     console.log(`Boot ID:    ${status.bootId}`);
     console.log(`Sector:     ${status.currentSector} (start: ${status.startSector})`);
-    console.log(`startTS:    ${status.startTimestamp} (${new Date(status.startTimestamp * 1000).toISOString()})`);
+    console.log(`startTS:    ${status.batchStartUnix} (${new Date(status.batchStartUnix * 1000).toISOString()})`);
     console.log(`UptimeSec:  ${status.uptimeSec}`);
     console.log(`ElapsedSec: ${status.elapsedSeconds}`);
     console.log(`Day:        ${status.currentDay}\n`);

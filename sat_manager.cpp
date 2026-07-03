@@ -44,10 +44,10 @@ uint32_t getBootUptime() {
 uint32_t getElapsedSeconds() {
   if (bootSessions == NULL || bootSessionCount == 0) return 0;
   uint32_t currentStartUnix = bootSessions[bootSessionCount - 1].startUnix;
-  if (currentStartUnix == 0 || startTimestamp == 0 || currentStartUnix < startTimestamp) {
+  if (currentStartUnix == 0 || batchStartUnix == 0 || currentStartUnix < batchStartUnix) {
     return getBootUptime();
   }
-  return currentStartUnix + getBootUptime() - startTimestamp;
+  return currentStartUnix + getBootUptime() - batchStartUnix;
 }
 
 uint32_t getCurrentDay() {

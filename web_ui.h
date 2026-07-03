@@ -426,8 +426,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       badge.className = 'badge ' + (d.stageLockdown ? 'badge-lockdown' : 'badge-incubation');
       
       const sd = document.getElementById('startDate');
-      if (d.startTimestamp > 0) {
-         sd.textContent = new Date(d.startTimestamp * 1000).toLocaleDateString();
+      if (d.batchStartUnix > 0) {
+         sd.textContent = new Date(d.batchStartUnix * 1000).toLocaleDateString();
       } else {
          sd.textContent = 'Unknown';
       }
@@ -1293,8 +1293,8 @@ const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
         
         document.getElementById('currentDayVal').textContent = (d.currentDay + 1);
         const sd = document.getElementById('startDateVal');
-        if (d.startTimestamp > 0) {
-          sd.textContent = new Date(d.startTimestamp * 1000).toLocaleDateString();
+        if (d.batchStartUnix > 0) {
+          sd.textContent = new Date(d.batchStartUnix * 1000).toLocaleDateString();
         } else {
           sd.textContent = 'Unknown';
         }

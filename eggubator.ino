@@ -22,6 +22,7 @@
 #include "sector_viewer.h"
 #include "embedded_assets.h"
 #include "sat_manager.h"
+#include "ntp_sync.h"
 
 extern bool useMockSensor;
 extern bool autoSimMode;
@@ -73,7 +74,7 @@ int8_t angleAdjustMax = 0;
 
 Servo myServo;
 
-uint32_t startTimestamp = 0;
+uint32_t batchStartUnix = 0;
 
 // Control state variables
 unsigned long atomizerPulseStart = 0;
@@ -105,7 +106,7 @@ struct DeviceSettings {
   unsigned long turnInterval;
   unsigned long pulseOnTime;
   unsigned long pulseOffTime;
-  uint32_t startTimestamp;
+  uint32_t batchStartUnix;
   uint8_t turnDurationDs;
   int8_t angleAdjustMin;
   int8_t angleAdjustMax;
@@ -144,7 +145,7 @@ void saveSettings() {
   if (settings.angleAdjustMax != angleAdjustMax) { settings.angleAdjustMax = angleAdjustMax; changed = true; }
   if (settings.pulseOnTime != PULSE_ON_TIME) { settings.pulseOnTime = PULSE_ON_TIME; changed = true; }
   if (settings.pulseOffTime != PULSE_OFF_TIME) { settings.pulseOffTime = PULSE_OFF_TIME; changed = true; }
-  if (settings.startTimestamp != startTimestamp) { settings.startTimestamp = startTimestamp; changed = true; }
+  if (settings.batchStartUnix != batchStartUnix) { settings.batchStartUnix = batchStartUnix; changed = true; }
   
   if (changed) {
     EEPROM.put(EEPROM_SETTINGS_MAGIC, settings);
@@ -163,7 +164,7 @@ void loadSettings() {
     EGG_TURN_DURATION = settings.turnDurationDs > 0 && settings.turnDurationDs <= 40 ? settings.turnDurationDs * 100 : 2000;
     angleAdjustMin = settings.angleAdjustMin;
     angleAdjustMax = settings.angleAdjustMax;
-    startTimestamp = settings.startTimestamp;
+    batchStartUnix = settings.batchStartUnix;
     
     if (settings.pulseOnTime == 2000 || settings.pulseOnTime == 3000 || settings.pulseOnTime == 4000 || settings.pulseOnTime == 5000) {
       PULSE_ON_TIME = settings.pulseOnTime;
@@ -188,7 +189,7 @@ void loadSettings() {
       servoEnabled = true;
     }
   } else {
-    startTimestamp = 0;
+    batchStartUnix = 0;
     saveSettings();
   }
 }
@@ -352,7 +353,7 @@ void handleStatus() {
                 ",\"bootId\":" + String(currentBootId) +
                 ",\"currentSector\":" + String(currentSector) +
                 ",\"startSector\":" + String(startSector) +
-                ",\"startTimestamp\":" + String(startTimestamp) +
+                ",\"batchStartUnix\":" + String(batchStartUnix) +
                 ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                 ",\"currentDay\":" + String(getCurrentDay()) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) + "}";
@@ -390,11 +391,11 @@ void handleData() {
                 ",\"uptimeSec\":" + String(uptimeSec) +
                 ",\"bootId\":" + String(currentBootId) +
                 ",\"currentSector\":" + String(currentSector) +
-                ",\"startTimestamp\":" + String(startTimestamp) +
+                ",\"batchStartUnix\":" + String(batchStartUnix) +
                 ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                 ",\"currentDay\":" + String(getCurrentDay()) +
                 ",\"logsInCurrentBoot\":" + String(logsInCurrentBoot) +
-                ",\"bootStartUnix\":" + String(startTimestamp + getElapsedSeconds() - uptimeSec);
+                ",\"bootStartUnix\":" + String(batchStartUnix + getElapsedSeconds() - uptimeSec);
 
 json += ",\"totalLogs\":" + String(getTotalLogs());
 
@@ -678,7 +679,7 @@ void handleSettingsApi() {
   } else if (server.hasArg("action")) {
     String action = server.arg("action");
     if (action == "newBatch" && server.hasArg("timestamp")) {
-      startTimestamp = (uint32_t)server.arg("timestamp").toInt();
+      batchStartUnix = (uint32_t)server.arg("timestamp").toInt();
       clearLogs();
       
       // Non-blocking move to 90 degrees (step 15)
@@ -714,9 +715,9 @@ void handleSettingsApi() {
       int dir = server.arg("dir").toInt();
       uint32_t currentElapsed = getElapsedSeconds();
       if (dir == 1) {
-        if (startTimestamp >= 86400) startTimestamp -= 86400;
+        if (batchStartUnix >= 86400) batchStartUnix -= 86400;
       } else if (dir == -1 && currentElapsed >= 86400) {
-        startTimestamp += 86400;
+        batchStartUnix += 86400;
       }
       saveSettings();
       server.send(200, "text/plain", "Day adjusted");
@@ -734,7 +735,7 @@ void handleSettingsApi() {
                   ",\"angleAdjustMin\":" + String(angleAdjustMin) + ",\"angleAdjustMax\":" + String(angleAdjustMax) +
 ",\"pulseOnTime\":" + String(PULSE_ON_TIME) +
                    ",\"pulseOffTime\":" + String(PULSE_OFF_TIME) +
-                   ",\"startTimestamp\":" + String(startTimestamp) +
+                   ",\"batchStartUnix\":" + String(batchStartUnix) +
                    ",\"elapsedSeconds\":" + String(getElapsedSeconds()) +
                    ",\"currentDay\":" + String(getCurrentDay()) +
                    ",\"stageLockdown\":" + String(stageLockdown ? "true" : "false") +
@@ -1041,9 +1042,10 @@ void setup() {
   httpUpdater.setup(&server);
   // Catch-all: redirect captive portal probes (generate_204, connecttest.txt, etc.)
   // to the dashboard so the phone shows a captive portal notification instead of
-  // keeping all traffic on cellular data.
+  // keeping all traffic on cellular data. Uses the mDNS hostname so Android/Apple
+  // captive portal browsers land on eggubator.local (not bare IP).
   server.onNotFound([]() {
-    server.sendHeader("Location", "/", true);
+    server.sendHeader("Location", "http://eggubator.local/", true);
     server.send(302, "text/plain", "");
   });
   server.begin();
@@ -1084,6 +1086,7 @@ void setup() {
 // ============================================
 void loop() {
   handleWiFi();
+  handleNtpSync();
   server.handleClient();
   // Start mDNS in STA or AP mode so eggubator.local resolves regardless
   static bool mdnsStarted = false;

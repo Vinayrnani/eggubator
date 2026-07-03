@@ -9,7 +9,7 @@
 #define EEPROM_LAST_KNOWN_BOOT_ID 15
 #define EEPROM_LAST_KNOWN_START_UNIX 16
 
-extern uint32_t startTimestamp;
+extern uint32_t batchStartUnix;
 
 extern ESP8266WebServer server;
 
