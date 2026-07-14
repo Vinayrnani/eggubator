@@ -937,7 +937,7 @@ void rotateEggs() {
       // Check if sweep complete
       if (currentServoStep == sweepTargetStep) {
         delay(50);
-        myServo.detach();
+        // Servo stays attached — holds position between sweep cycles to resist vibration
         sweeping = false;
         lastServoTurn = now;
       } else {
